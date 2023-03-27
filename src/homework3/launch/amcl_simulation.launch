@@ -19,6 +19,5 @@
   <include file="$(find turtlebot_navigation)/launch/includes/move_base.launch.xml"/>
 
   <!-- Tell the robot that it is not THAT fat -->
-  <!-- TODO change this config file -->
-  <rosparam file="/home/robert/Faks/rins/workspace/amcl_config.yaml" />
+  <rosparam file="$(find homework3)/config/amcl_config.yaml" />
 </launch>
