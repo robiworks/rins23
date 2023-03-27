@@ -1,6 +1,7 @@
 <launch>
   
   <!-- Map server -->
+  <!-- TODO change this map file -->
   <arg name="map_file" default="/home/robert/Faks/rins/workspace/rinsworldmap.yaml"/>
   <node name="map_server" pkg="map_server" type="map_server" args="$(arg map_file)" />
 
@@ -18,5 +19,6 @@
   <include file="$(find turtlebot_navigation)/launch/includes/move_base.launch.xml"/>
 
   <!-- Tell the robot that it is not THAT fat -->
+  <!-- TODO change this config file -->
   <rosparam file="/home/robert/Faks/rins/workspace/amcl_config.yaml" />
 </launch>
