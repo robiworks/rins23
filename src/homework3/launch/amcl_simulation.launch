@@ -1,8 +1,7 @@
 <launch>
   
   <!-- Map server -->
-  <!-- TODO change this map file -->
-  <arg name="map_file" default="/home/robert/Faks/rins/workspace/rinsworldmap.yaml"/>
+  <arg name="map_file" default="$(find homework3)/config/map.yml"/>
   <node name="map_server" pkg="map_server" type="map_server" args="$(arg map_file)" />
 
   <!-- Localization -->
