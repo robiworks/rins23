@@ -1,7 +1,7 @@
 <launch>
   
   <!-- Map server -->
-  <arg name="map_file" default="$(find homework3)/config/map.yml"/>
+  <arg name="map_file" default="$(find homework3)/config/map.yaml"/>
   <node name="map_server" pkg="map_server" type="map_server" args="$(arg map_file)" />
 
   <!-- Localization -->
