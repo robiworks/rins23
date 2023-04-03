@@ -29,7 +29,7 @@ from torchvision.transforms import ToTensor
 
 ### PARAMETERS ###
 MARKER_DURATION = 360
-FACE_DIFF_THRESHOLD = 0.21
+FACE_DIFF_THRESHOLD = 0.5
 NUM_POINTS = 8
 RADIUS = 3
 FACE_HEIGHT = 120
@@ -79,13 +79,18 @@ class FaceDescriptors:
         )
         self.marker_array = MarkerArray()
 
+    def hellinger_distance(self, a, b):
+        return np.sqrt(
+            np.sum((np.sqrt(np.abs(a)) - np.sqrt(np.abs(b))) ** 2)
+        ) / np.sqrt(2)
+
     def add_descriptor(self, fdf: Face) -> bool:
         # Check if the description is already in the list or something similar
         for face in self.faces_with_descriptors:
-            norm = np.linalg.norm(fdf.descriptor - face.descriptor)
+            norm = self.hellinger_distance(face.descriptor, fdf.descriptor)
             if norm < FACE_DIFF_THRESHOLD:
                 face.add_pose(fdf.pose)
-                print(f"[~] Face already known, norm: {norm}")
+                print(f"[-] Face already known, norm: {norm}")
                 return False
 
         print("[+] New face detected!")
@@ -101,6 +106,7 @@ class FaceDescriptors:
         self.cancel_id += 1
         cancel_msg = GoalID()
         cancel_msg.id = str(self.cancel_id)
+        cancel_msg.stamp = rospy.Time.now()
         # Publish the cancel message
         self.goal_cancel_pub.publish(cancel_msg)
 
@@ -230,6 +236,8 @@ class face_localizer:
         for face, descriptor, box in zip(faces_cropped, descriptors, batch_boxes):
             x1, y1, x2, y2 = box
             x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
+            # Get the pose of the face
+            depth_time = depth_image_message.header.stamp
 
             # Prevent computing the distance to a face that is not in the image
             if np.isnan(depth_image[y1:y2, x1:x2]).any():
@@ -242,13 +250,15 @@ class face_localizer:
             except RuntimeWarning:
                 continue
 
-            if face_distance > 1.2 or face_distance < 0.7 or np.isnan(face_distance):
+            if face_distance > 0.9 or face_distance < 0.5 or np.isnan(face_distance):
+                if face_distance > 0.9:
+                    self.report_close_face(face_distance, box, depth_time, "far_away")
+                else:
+                    self.report_close_face(face_distance, box, depth_time, "too_close")
                 continue
 
-            print("face dist", face_distance)
+            print("[~] face distance:", face_distance)
 
-            # Get the pose of the face
-            depth_time = depth_image_message.header.stamp
             pose = self.get_pose((x1, x2, y1, y2), face_distance, depth_time)
 
             if pose is None:
@@ -257,6 +267,19 @@ class face_localizer:
             fdf = Face(box, face_distance, depth_time, pose)
             fdf.describe(descriptor.cpu().detach().numpy())
             self.face_descriptors.add_descriptor(fdf)
+
+    def report_close_face(self, face_distance, box, depth_time, close):
+        """@slime: This function is called when a face is detected close to the robot"""
+        x1, y1, x2, y2 = box
+        x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
+
+        # Get the pose of the face
+        pose = self.get_pose((x1, x2, y1, y2), face_distance, depth_time)
+        print("####################")
+        print("[~] Close face detected")
+        print("[~] Distance: ", face_distance)
+        print("[~] Pose: ", pose)
+        print("####################")
 
 
 def main():
