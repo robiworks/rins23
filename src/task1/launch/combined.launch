@@ -1,9 +1,9 @@
 <launch>
   <!-- roslaunch exercise3 rins_world.launch -->
-  <include file="$(find homework3)/launch/rins_world.launch" />
+  <include file="$(find task1)/launch/rins_world.launch" />
 
   <!-- roslaunch exercise3 amcl_simulation.launch -->
-  <include file="$(find homework3)/launch/amcl_simulation.launch" />
+  <include file="$(find task1)/launch/amcl_simulation.launch" />
 
   <!-- roslaunch turtlebot_rviz_launchers view_navigation.launch -->
   <include file="$(find turtlebot_rviz_launchers)/launch/view_navigation.launch" />
