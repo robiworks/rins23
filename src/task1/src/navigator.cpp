@@ -172,7 +172,7 @@ class Navigator {
     }
 };
 
-static bool NAVIGATOR_IMPLEMENTED = true;
+static bool NAVIGATOR_IMPLEMENTED = false;
 
 int main(int argc, char** argv) {
   if (!NAVIGATOR_IMPLEMENTED) {
