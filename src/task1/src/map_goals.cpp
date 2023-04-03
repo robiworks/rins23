@@ -6,11 +6,11 @@
 #include <nav_msgs/GetMap.h>
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
+#include <sound_play/sound_play.h>
 #include <stdlib.h>
 #include <tf2/transform_datatypes.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 #include <tf2_ros/transform_listener.h>
-#include <sound_play/sound_play.h>
 
 using namespace std;
 using namespace cv;
@@ -25,6 +25,10 @@ ros::Publisher  goal_pub;
 ros::Subscriber map_sub;
 ros::Subscriber status_sub;
 ros::Subscriber cancel_sub;
+
+tf2_ros::Buffer*            tfBuffer   = NULL;
+tf2_ros::TransformListener* tfListener = NULL;
+sound_play::SoundClient*    sc         = NULL;
 
 struct TransformedPoint {
     float x;
@@ -109,19 +113,20 @@ bool reachedGoal(const geometry_msgs::TransformStamped ts) {
 
 void statusCallback(const actionlib_msgs::GoalStatusArrayConstPtr &msg) {
   // If navigation is completed, exit and wait for next goal
-  if (navigation_completed || navigation_paused)
+  if (navigation_paused || navigation_completed)
     return;
 
   // http://wiki.ros.org/tf2/Tutorials/Writing%20a%20tf2%20listener%20%28C%2B%2B%29
-  tf2_ros::Buffer            tfBuffer;
-  tf2_ros::TransformListener tfListener(tfBuffer);
-
   geometry_msgs::TransformStamped ts;
 
   for (int i = 0; i < msg->status_list.size(); i++) {
     try {
-      ts = tfBuffer.lookupTransform("map", "base_link", ros::Time(0), ros::Duration(3.0));
-      ROS_INFO("Currently at x: %f, y: %f", ts.transform.translation.x, ts.transform.translation.y);
+      ts = tfBuffer->lookupTransform("map", "base_link", ros::Time(0), ros::Duration(3.0));
+      ROS_DEBUG(
+          "Currently at x: %f, y: %f",
+          ts.transform.translation.x,
+          ts.transform.translation.y
+      );
 
       if (msg->status_list[i].status == actionlib_msgs::GoalStatus::SUCCEEDED && reachedGoal(ts)) {
         ROS_INFO("Navigation completed!");
@@ -162,12 +167,9 @@ void cancelCallback(const actionlib_msgs::GoalIDConstPtr &msg) {
   ROS_WARN("Received CANCEL message, goal ID: %s", msg->id.c_str());
   navigation_paused = true;
 
-  sound_play::SoundClient sc;
-  // Sleep for 2 sec for SoundClient to initialize
-  ros::Duration(2.0).sleep();
-
   ROS_INFO("Playing sound ...");
-  sc.say("Kosa Mona!", "voice_kal_diphone", 1.0);
+  sc->say("Kosha Mona!", "voice_kal_diphone", 1.0);
+  ros::Duration(2.0).sleep();
 
   // Continue navigation and resend goal
   navigation_paused = false;
@@ -175,20 +177,17 @@ void cancelCallback(const actionlib_msgs::GoalIDConstPtr &msg) {
 }
 
 void navigateThroughPoints(TransformedPoint* arr) {
-  ros::Rate rate(RATE);
-
   for (int i = 0; i < 5; i++) {
     navigateTo(arr[i]);
 
     while (!navigation_completed) {
-      // rate.sleep();
       ros::spinOnce();
     }
 
     navigation_completed = false;
   }
 
-  ROS_INFO("Finished navigating through array of predetermined points!");
+  ROS_INFO("Finished navigating through interest points!");
 }
 
 int main(int argc, char** argv) {
@@ -208,10 +207,14 @@ int main(int argc, char** argv) {
   ros::init(argc, argv, "map_goals");
   ros::NodeHandle n;
 
+  tfBuffer   = new tf2_ros::Buffer;
+  tfListener = new tf2_ros::TransformListener(*tfBuffer);
+  sc         = new sound_play::SoundClient;
+
   map_sub    = n.subscribe("map", 10, &mapCallback);
-  goal_pub   = n.advertise<geometry_msgs::PoseStamped>("/move_base_simple/goal", 10);
-  status_sub = n.subscribe("/move_base/status", 10, &statusCallback);
-  cancel_sub = n.subscribe("/move_base/cancel", 10, &cancelCallback);
+  goal_pub   = n.advertise<geometry_msgs::PoseStamped>("/move_base_simple/goal", 5);
+  status_sub = n.subscribe("/move_base/status", 5, &statusCallback);
+  cancel_sub = n.subscribe("/move_base/cancel", 2, &cancelCallback);
 
   // Wait until map is ready
   while (!map_ready) {
