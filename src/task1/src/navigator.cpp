@@ -25,21 +25,26 @@ class Navigator {
     Mat                             cv_map;
     float                           map_resolution = 0;
     geometry_msgs::TransformStamped map_transform;
-    ros::Subscriber                 map_sub;
-
-    // Node handle, publishers and subscribers
-    ros::NodeHandle nh;
-    ros::Publisher  goal_pub;
-    ros::Subscriber status_sub;
 
     // Navigation-related
-    bool                       map_ready = false;
+  public:
+    bool map_ready = false;
+
+  private:
     TransformedPoint           current_goal;
     const double               NAVIGATION_THRESHOLD = 0.2;
     bool                       navigation_completed = false;
     tf2_ros::Buffer            tfBuffer;
     tf2_ros::TransformListener tfListener;
 
+    bool reachedGoal(const geometry_msgs::TransformStamped ts) {
+      const double diff_x = abs(ts.transform.translation.x - this->current_goal.x);
+      const double diff_y = abs(ts.transform.translation.y - this->current_goal.y);
+
+      return diff_x <= this->NAVIGATION_THRESHOLD && diff_y <= this->NAVIGATION_THRESHOLD;
+    }
+
+  public:
     void mapCallback(const nav_msgs::OccupancyGridConstPtr &msg_map) {
       int size_x = msg_map->info.width;
       int size_y = msg_map->info.height;
@@ -97,13 +102,6 @@ class Navigator {
       this->map_ready = true;
     }
 
-    bool reachedGoal(const geometry_msgs::TransformStamped ts) {
-      const double diff_x = abs(ts.transform.translation.x - this->current_goal.x);
-      const double diff_y = abs(ts.transform.translation.y - this->current_goal.y);
-
-      return diff_x <= this->NAVIGATION_THRESHOLD && diff_y <= this->NAVIGATION_THRESHOLD;
-    }
-
     void statusCallback(const actionlib_msgs::GoalStatusArrayConstPtr &msg) {
       // Exit and wait for next goal if navigation is completed
       if (this->navigation_completed) {
@@ -143,24 +141,11 @@ class Navigator {
       }
     }
 
-  public:
-    Navigator() : nh(), tfBuffer(), tfListener(tfBuffer) {
-      ROS_INFO("Initializing Navigator");
-
-      this->map_sub  = this->nh.subscribe("map", 10, &Navigator::mapCallback, this);
-      this->goal_pub = this->nh.advertise<geometry_msgs::PoseStamped>("/move_base_simple/goal", 10);
-      this->status_sub =
-          this->nh.subscribe("/move_base/status", 10, &Navigator::statusCallback, this);
-
-      // Wait until the map is ready
-      while (!this->map_ready) {
-        ros::spinOnce();
-      }
-
-      ROS_INFO("Successfully initialized Navigator");
+    Navigator() : tfBuffer(), tfListener(tfBuffer) {
+      ROS_INFO("Initialized Navigator");
     }
 
-    void navigateThroughPoints(TransformedPoint* arr) {
+    void navigateThroughPoints(ros::Publisher goal_publisher, TransformedPoint* arr) {
       geometry_msgs::PoseStamped goal;
       goal.header.frame_id    = "map";
       goal.pose.orientation.w = 1;
@@ -172,7 +157,7 @@ class Navigator {
 
         ROS_INFO("Navigating to hardcoded point: (x: %f, y: %f)", arr[i].x, arr[i].y);
 
-        this->goal_pub.publish(goal);
+        goal_publisher.publish(goal);
         this->current_goal.x = arr[i].x;
         this->current_goal.y = arr[i].y;
 
@@ -187,7 +172,7 @@ class Navigator {
     }
 };
 
-static bool NAVIGATOR_IMPLEMENTED = false;
+static bool NAVIGATOR_IMPLEMENTED = true;
 
 int main(int argc, char** argv) {
   if (!NAVIGATOR_IMPLEMENTED) {
@@ -198,8 +183,31 @@ int main(int argc, char** argv) {
   ros::init(argc, argv, "navigator");
   ros::NodeHandle nh;
 
-  Navigator nav;
-  // ros::Subscriber map_sub = nh.subscribe("map", 10, &Navigator::mapCallback, &nav);
+  Navigator       nav;
+  ros::Subscriber map_sub  = nh.subscribe("map", 10, &Navigator::mapCallback, &nav);
+  ros::Publisher  goal_pub = nh.advertise<geometry_msgs::PoseStamped>("/move_base_simple/goal", 10);
+  ros::Subscriber status_sub =
+      nh.subscribe("/move_base/status", 10, &Navigator::statusCallback, &nav);
+
+  // Wait until the map is ready
+  while (!nav.map_ready) {
+    ros::spinOnce();
+  }
+
+  // Five hardcoded points
+  TransformedPoint hardcodedPoints[5];
+  hardcodedPoints[0].x = 0.2;
+  hardcodedPoints[0].y = -1.3;
+  hardcodedPoints[1].x = 3.2;
+  hardcodedPoints[1].y = -0.15;
+  hardcodedPoints[2].x = 1.65;
+  hardcodedPoints[2].y = 0.8;
+  hardcodedPoints[3].x = 0.6;
+  hardcodedPoints[3].y = 2.5;
+  hardcodedPoints[4].x = -0.65;
+  hardcodedPoints[4].y = 0.15;
+
+  nav.navigateThroughPoints(goal_pub, hardcodedPoints);
 
   return 0;
 }
