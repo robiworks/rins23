@@ -14,10 +14,12 @@
 using namespace std;
 using namespace cv;
 
+// RINS-provided initialization
 Mat                             cv_map;
 float                           map_resolution = 0;
 geometry_msgs::TransformStamped map_transform;
 
+// Our initalization
 ros::Publisher  goal_pub;
 ros::Subscriber map_sub;
 ros::Subscriber status_sub;
@@ -27,12 +29,13 @@ struct TransformedPoint {
     float y;
 };
 
-bool map_ready = false;
-
+bool             map_ready            = false;
+bool             navigation_completed = false;
+double           NAV_THRESHOLD        = 0.2;
+double           RATE                 = 10;
 TransformedPoint currentGoal;
 
-double RATE = 4;
-
+// Provided by RINS for map initialization
 void mapCallback(const nav_msgs::OccupancyGridConstPtr &msg_map) {
   int size_x = msg_map->info.width;
   int size_y = msg_map->info.height;
@@ -94,48 +97,11 @@ void mapCallback(const nav_msgs::OccupancyGridConstPtr &msg_map) {
   map_ready = true;
 }
 
-void mouseCallback(int event, int x, int y, int, void* data) {
-  if (event != EVENT_LBUTTONDOWN || cv_map.empty())
-    return;
+bool reachedGoal(const geometry_msgs::TransformStamped ts) {
+  const double diff_x = abs(ts.transform.translation.x - currentGoal.x);
+  const double diff_y = abs(ts.transform.translation.y - currentGoal.y);
 
-  int v = (int) cv_map.at<unsigned char>(y, x);
-
-  if (v != 255) {
-    ROS_WARN("Unable to move to (x: %d, y: %d), not reachable", x, y);
-    return;
-  }
-
-  geometry_msgs::Point pt;
-  geometry_msgs::Point transformed_pt;
-
-  pt.x = (float) x * map_resolution;
-  pt.y = (float) (cv_map.rows - y) * map_resolution;
-  pt.z = 0.0;
-
-  tf2::doTransform(pt, transformed_pt, map_transform);
-
-  //geometry_msgs::Point transformed = map_transform * pt;
-
-  geometry_msgs::PoseStamped goal;
-
-  goal.header.frame_id    = "map";
-  goal.pose.orientation.w = 1;
-  goal.pose.position.x    = transformed_pt.x;
-  goal.pose.position.y    = transformed_pt.y;
-  goal.header.stamp       = ros::Time::now();
-
-  ROS_INFO("Moving to (x: %f, y: %f)", transformed_pt.x, transformed_pt.y);
-
-  goal_pub.publish(goal);
-}
-
-bool navigation_completed = false;
-
-bool reachedGoal(const geometry_msgs::TransformStamped transformStamped) {
-  double threshold = 0.2;
-
-  return abs(transformStamped.transform.translation.x - currentGoal.x) <= threshold &&
-         abs(transformStamped.transform.translation.y - currentGoal.y) <= threshold;
+  return diff_x <= NAV_THRESHOLD && diff_y <= NAV_THRESHOLD;
 }
 
 void statusCallback(const actionlib_msgs::GoalStatusArrayConstPtr &msg) {
@@ -147,20 +113,14 @@ void statusCallback(const actionlib_msgs::GoalStatusArrayConstPtr &msg) {
   tf2_ros::Buffer            tfBuffer;
   tf2_ros::TransformListener tfListener(tfBuffer);
 
-  geometry_msgs::TransformStamped transformStamped;
+  geometry_msgs::TransformStamped ts;
 
   for (int i = 0; i < msg->status_list.size(); i++) {
     try {
-      transformStamped =
-          tfBuffer.lookupTransform("map", "base_link", ros::Time(0), ros::Duration(3.0));
-      ROS_INFO(
-          "Currently at x: %f, y: %f",
-          transformStamped.transform.translation.x,
-          transformStamped.transform.translation.y
-      );
+      ts = tfBuffer.lookupTransform("map", "base_link", ros::Time(0), ros::Duration(3.0));
+      ROS_INFO("Currently at x: %f, y: %f", ts.transform.translation.x, ts.transform.translation.y);
 
-      if (msg->status_list[i].status == actionlib_msgs::GoalStatus::SUCCEEDED &&
-          reachedGoal(transformStamped)) {
+      if (msg->status_list[i].status == actionlib_msgs::GoalStatus::SUCCEEDED && reachedGoal(ts)) {
         ROS_INFO("Navigation completed!");
         navigation_completed = true;
         break;
@@ -228,9 +188,8 @@ int main(int argc, char** argv) {
   goal_pub   = n.advertise<geometry_msgs::PoseStamped>("/move_base_simple/goal", 10);
   status_sub = n.subscribe("/move_base/status", 10, &statusCallback);
 
-  ros::Rate rate(RATE);
+  // Wait until map is ready
   while (!map_ready) {
-    rate.sleep();
     ros::spinOnce();
   }
 
