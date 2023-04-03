@@ -201,7 +201,7 @@ void cancelCallback(const actionlib_msgs::GoalIDConstPtr &msg) {
 }
 
 void navigateThroughPoints(TransformedPoint* arr) {
-  for (int i = 0; i < 5; i++) {
+  for (int i = 0; i < 22; i++) {
     navigateTo(arr[i]);
 
     while (!navigation_completed) {
@@ -228,6 +228,31 @@ int main(int argc, char** argv) {
   hardcodedPoints[4].x = -0.65;
   hardcodedPoints[4].y = 0.15;
 
+  TransformedPoint interestPoints[] = {
+    { 0.00, -1.02},
+    { 1.13, -1.05},
+    { 2.25, -0.92},
+    { 3.65, -0.30},
+    { 3.08,  0.31},
+    { 2.29,  0.36},
+    { 1.19,  0.20},
+    { 1.10,  1.08},
+    { 2.01,  1.28},
+    { 2.40,  2.02},
+    { 2.04,  2.77},
+    { 1.14,  2.66},
+    { 1.02,  1.81},
+    { 0.24,  2.67},
+    {-0.50,  2.34},
+    {-1.06,  1.99},
+    {-1.65,  2.70},
+    {-0.78,  0.96},
+    {-1.33,  0.17},
+    {-0.57,  0.35},
+    { 0.00,  0.97},
+    { 0.00,  0.17}
+  };
+
   ros::init(argc, argv, "map_goals");
   ros::NodeHandle n;
 
@@ -248,7 +273,7 @@ int main(int argc, char** argv) {
 
   ROS_INFO("Waiting 15 seconds for other initializations");
   ros::Duration(15.0).sleep();
-  navigateThroughPoints(hardcodedPoints);
+  navigateThroughPoints(interestPoints);
 
   return 0;
 }
