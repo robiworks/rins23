@@ -10,6 +10,7 @@
 #include <tf2/transform_datatypes.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 #include <tf2_ros/transform_listener.h>
+#include <sound_play/sound_play.h>
 
 using namespace std;
 using namespace cv;
@@ -163,6 +164,11 @@ void cancelCallback(const actionlib_msgs::GoalIDConstPtr &msg) {
 
   // TODO Play sound here
   ROS_INFO("Playing sound ...");
+  sound_play::SoundClient sc;
+  // SLeep for 2 sec
+  ros::Duration(2.0).sleep();
+
+  sc.say("Kosa Mona!", "voice_kal_diphone", 1.0);
 
   // Continue navigation and resend goal
   navigation_paused = false;

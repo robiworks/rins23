@@ -7,4 +7,7 @@
 
   <!-- roslaunch turtlebot_rviz_launchers view_navigation.launch -->
   <include file="$(find turtlebot_rviz_launchers)/launch/view_navigation.launch" />
+
+  <!-- roslaunch sound_play soundplay_node.launch -->
+  <include file="$(find sound_play)/soundplay_node.launch" />
 </launch>
