@@ -162,12 +162,11 @@ void cancelCallback(const actionlib_msgs::GoalIDConstPtr &msg) {
   ROS_WARN("Received CANCEL message, goal ID: %s", msg->id.c_str());
   navigation_paused = true;
 
-  // TODO Play sound here
-  ROS_INFO("Playing sound ...");
   sound_play::SoundClient sc;
-  // SLeep for 2 sec
+  // Sleep for 2 sec for SoundClient to initialize
   ros::Duration(2.0).sleep();
 
+  ROS_INFO("Playing sound ...");
   sc.say("Kosa Mona!", "voice_kal_diphone", 1.0);
 
   // Continue navigation and resend goal
