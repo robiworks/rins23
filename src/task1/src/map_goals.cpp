@@ -3,6 +3,7 @@
 #include <actionlib_msgs/GoalStatusArray.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/Quaternion.h>
+#include <geometry_msgs/Twist.h>
 #include <nav_msgs/GetMap.h>
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
@@ -22,6 +23,7 @@ geometry_msgs::TransformStamped map_transform;
 
 // Our initalization
 ros::Publisher  goal_pub;
+ros::Publisher  cmdvel_pub;
 ros::Subscriber map_sub;
 ros::Subscriber status_sub;
 ros::Subscriber cancel_sub;
@@ -111,6 +113,26 @@ bool reachedGoal(const geometry_msgs::TransformStamped ts) {
   return diff_x <= NAV_THRESHOLD && diff_y <= NAV_THRESHOLD;
 }
 
+void rotate360() {
+  ros::Rate            rate(4);
+  geometry_msgs::Twist msg;
+
+  // Set parameters for 360 degree rotation
+  msg.linear.x  = 0;
+  msg.angular.z = 1.30;
+
+  // Publish same message multiple times because else the robot will stop
+  ROS_INFO("Rotating 360 degrees to observe environment");
+  for (int i = 0; i < 23; i++) {
+    cmdvel_pub.publish(msg);
+    rate.sleep();
+  }
+
+  // Stop the robot after it finishes rotating
+  msg.angular.z = 0;
+  cmdvel_pub.publish(msg);
+}
+
 void statusCallback(const actionlib_msgs::GoalStatusArrayConstPtr &msg) {
   // If navigation is completed, exit and wait for next goal
   if (navigation_paused || navigation_completed)
@@ -131,12 +153,14 @@ void statusCallback(const actionlib_msgs::GoalStatusArrayConstPtr &msg) {
       if (msg->status_list[i].status == actionlib_msgs::GoalStatus::SUCCEEDED && reachedGoal(ts)) {
         ROS_INFO("Navigation completed!");
         navigation_completed = true;
+        rotate360();
         break;
       }
 
       if (msg->status_list[i].status == actionlib_msgs::GoalStatus::ABORTED) {
         ROS_WARN("Unable to reach goal!");
         navigation_completed = true;
+        rotate360();
         break;
       }
     } catch (tf2::TransformException &ex) {
@@ -211,16 +235,19 @@ int main(int argc, char** argv) {
   tfListener = new tf2_ros::TransformListener(*tfBuffer);
   sc         = new sound_play::SoundClient;
 
-  map_sub    = n.subscribe("map", 10, &mapCallback);
-  goal_pub   = n.advertise<geometry_msgs::PoseStamped>("/move_base_simple/goal", 5);
-  status_sub = n.subscribe("/move_base/status", 5, &statusCallback);
-  cancel_sub = n.subscribe("/move_base/cancel", 2, &cancelCallback);
-
-  // Wait until map is ready
+  // Subscribe and wait until map is ready
+  map_sub = n.subscribe("map", 10, &mapCallback);
   while (!map_ready) {
     ros::spinOnce();
   }
 
+  cmdvel_pub = n.advertise<geometry_msgs::Twist>("/cmd_vel_mux/input/navi", 10);
+  goal_pub   = n.advertise<geometry_msgs::PoseStamped>("/move_base_simple/goal", 5);
+  status_sub = n.subscribe("/move_base/status", 5, &statusCallback);
+  cancel_sub = n.subscribe("/move_base/cancel", 2, &cancelCallback);
+
+  ROS_INFO("Waiting 15 seconds for other initializations");
+  ros::Duration(15.0).sleep();
   navigateThroughPoints(hardcodedPoints);
 
   return 0;
