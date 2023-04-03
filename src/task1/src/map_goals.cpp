@@ -23,6 +23,7 @@ geometry_msgs::TransformStamped map_transform;
 ros::Publisher  goal_pub;
 ros::Subscriber map_sub;
 ros::Subscriber status_sub;
+ros::Subscriber cancel_sub;
 
 struct TransformedPoint {
     float x;
@@ -31,6 +32,7 @@ struct TransformedPoint {
 
 bool             map_ready            = false;
 bool             navigation_completed = false;
+bool             navigation_paused    = false;
 double           NAV_THRESHOLD        = 0.2;
 double           RATE                 = 10;
 TransformedPoint currentGoal;
@@ -106,7 +108,7 @@ bool reachedGoal(const geometry_msgs::TransformStamped ts) {
 
 void statusCallback(const actionlib_msgs::GoalStatusArrayConstPtr &msg) {
   // If navigation is completed, exit and wait for next goal
-  if (navigation_completed)
+  if (navigation_completed || navigation_paused)
     return;
 
   // http://wiki.ros.org/tf2/Tutorials/Writing%20a%20tf2%20listener%20%28C%2B%2B%29
@@ -138,26 +140,43 @@ void statusCallback(const actionlib_msgs::GoalStatusArrayConstPtr &msg) {
   }
 }
 
-void navigateThroughPoints(TransformedPoint* arr) {
-  ros::Rate rate(RATE);
-
+void navigateTo(TransformedPoint point) {
   geometry_msgs::PoseStamped goal;
   goal.header.frame_id    = "map";
   goal.pose.orientation.w = 1;
 
+  // Set goal position to point coordinates
+  goal.pose.position.x = point.x;
+  goal.pose.position.y = point.y;
+  goal.header.stamp    = ros::Time::now();
+
+  ROS_INFO("Received navigate command, navigating to: (x: %f, y: %f)", point.x, point.y);
+  goal_pub.publish(goal);
+
+  currentGoal.x = point.x;
+  currentGoal.y = point.y;
+}
+
+void cancelCallback(const actionlib_msgs::GoalIDConstPtr &msg) {
+  ROS_WARN("Received CANCEL message, goal ID: %s", msg->id.c_str());
+  navigation_paused = true;
+
+  // TODO Play sound here
+  ROS_INFO("Playing sound ...");
+
+  // Continue navigation and resend goal
+  navigation_paused = false;
+  navigateTo(currentGoal);
+}
+
+void navigateThroughPoints(TransformedPoint* arr) {
+  ros::Rate rate(RATE);
+
   for (int i = 0; i < 5; i++) {
-    goal.pose.position.x = arr[i].x;
-    goal.pose.position.y = arr[i].y;
-    goal.header.stamp    = ros::Time::now();
-
-    ROS_INFO("Navigating to hardcoded point: (x: %f, y: %f)", arr[i].x, arr[i].y);
-
-    goal_pub.publish(goal);
-    currentGoal.x = arr[i].x;
-    currentGoal.y = arr[i].y;
+    navigateTo(arr[i]);
 
     while (!navigation_completed) {
-      rate.sleep();
+      // rate.sleep();
       ros::spinOnce();
     }
 
@@ -187,6 +206,7 @@ int main(int argc, char** argv) {
   map_sub    = n.subscribe("map", 10, &mapCallback);
   goal_pub   = n.advertise<geometry_msgs::PoseStamped>("/move_base_simple/goal", 10);
   status_sub = n.subscribe("/move_base/status", 10, &statusCallback);
+  cancel_sub = n.subscribe("/move_base/cancel", 10, &cancelCallback);
 
   // Wait until map is ready
   while (!map_ready) {
