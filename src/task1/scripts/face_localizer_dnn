@@ -37,6 +37,7 @@ FACE_WIDTH = 90
 
 ### RUN  ###
 # roslaunch task1 combined.launch
+# rosrun task1 map_goals
 # rosrun task1 face_localizer_dnn
 
 
@@ -145,6 +146,10 @@ class face_localizer:
         # An object we use for converting images between ROS format and OpenCV format
         self.bridge = CvBridge()
 
+        self.face_coords_pub = rospy.Publisher(
+            "/msg/coords/", PointStamped, queue_size=10
+        )
+
         self.dims = (0, 0, 0)
         self.log_dir = "/tmp/face_localizer_log"
         self.timestamp = datetime.datetime.now().isoformat()
@@ -231,9 +236,7 @@ class face_localizer:
         if faces_cropped is None or batch_boxes is None:
             return
 
-        descriptors = self.resnet(faces_cropped.to(self.device))
-
-        for face, descriptor, box in zip(faces_cropped, descriptors, batch_boxes):
+        for face, box in zip(faces_cropped, batch_boxes):
             x1, y1, x2, y2 = box
             x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
             # Get the pose of the face
@@ -250,10 +253,13 @@ class face_localizer:
             except RuntimeWarning:
                 continue
 
-            if face_distance > 0.9 or face_distance < 0.5 or np.isnan(face_distance):
-                if face_distance > 0.9:
+            if face_distance > 0.8 or face_distance < 0.5 or np.isnan(face_distance):
+                # Publish the coordinates to the /msg/coords/
+                # Create the PointStamped message
+                # Publish the message
+                if face_distance > 0.8:
                     self.report_close_face(face_distance, box, depth_time, "far_away")
-                else:
+                elif face_distance < 0.5:
                     self.report_close_face(face_distance, box, depth_time, "too_close")
                 continue
 
@@ -264,8 +270,12 @@ class face_localizer:
             if pose is None:
                 continue
 
+            face_descriptor = (
+                self.resnet(face.to(self.device).unsqueeze(0)).cpu().detach().numpy()
+            )
+
             fdf = Face(box, face_distance, depth_time, pose)
-            fdf.describe(descriptor.cpu().detach().numpy())
+            fdf.describe(face_descriptor)
             self.face_descriptors.add_descriptor(fdf)
 
     def report_close_face(self, face_distance, box, depth_time, close):
@@ -276,7 +286,7 @@ class face_localizer:
         # Get the pose of the face
         pose = self.get_pose((x1, x2, y1, y2), face_distance, depth_time)
         print("####################")
-        print("[~] Close face detected")
+        print("[~] Status: ", close)
         print("[~] Distance: ", face_distance)
         print("[~] Pose: ", pose)
         print("####################")
