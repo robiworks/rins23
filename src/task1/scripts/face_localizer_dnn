@@ -29,7 +29,7 @@ from torchvision.transforms import ToTensor
 
 ### PARAMETERS ###
 MARKER_DURATION = 360
-FACE_DIFF_THRESHOLD = 0.5
+FACE_DIFF_THRESHOLD = 0.6
 NUM_POINTS = 8
 RADIUS = 3
 FACE_HEIGHT = 120
@@ -257,10 +257,10 @@ class face_localizer:
                 # Publish the coordinates to the /msg/coords/
                 # Create the PointStamped message
                 # Publish the message
-                if face_distance > 0.8:
-                    self.report_close_face(face_distance, box, depth_time, "far_away")
-                elif face_distance < 0.5:
-                    self.report_close_face(face_distance, box, depth_time, "too_close")
+                #if face_distance > 0.8:
+                #    self.report_close_face(face_distance, box, depth_time, "far_away")
+                #elif face_distance < 0.5:
+                #    self.report_close_face(face_distance, box, depth_time, "too_close")
                 continue
 
             print("[~] face distance:", face_distance)
