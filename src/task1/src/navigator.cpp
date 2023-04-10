@@ -26,6 +26,7 @@ struct NavigatorPoint {
 
 enum NavigatorState {
   IDLE,       // Navigation is idle, only applicable at the start
+  PREPARING,  // Navigation is preparing to start
   NAVIGATING, // Robot is navigating around the map
   FINISHED,   // Navigation finished successfully
   FAILED      // Navigation failed
@@ -83,10 +84,23 @@ class Navigator {
       actionlib::SimpleClientGoalState goalState = client->getState();
       while (!goalState.isDone()) {
         ROS_DEBUG("[Navigator] Current goal state: %s", goalState.toString().c_str());
+
+        // Update currentState according to goal state
+        switch (goalState.state_) {
+          // The goal has been sent to the action server but has not yet been processed
+          case actionlib::SimpleClientGoalState::PENDING:
+            currentState = NavigatorState::PREPARING;
+            break;
+          // The goal is currently being worked on by the action server
+          case actionlib::SimpleClientGoalState::ACTIVE:
+            currentState = NavigatorState::NAVIGATING;
+            break;
+        }
+
+        // TODO Handle incoming messages to stop/explore etc.
+
         ros::Duration(0.5).sleep();
         goalState = client->getState();
-
-        // TODO Handle incoming messages and state to stop/explore etc.
       }
 
       // Handle terminal states
