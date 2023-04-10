@@ -86,6 +86,18 @@ class Navigator {
       }
     }
 
+    // Callback to handle /move_base/cancel
+    void cancelCallback(const actionlib_msgs::GoalIDConstPtr &msg) {
+      ROS_WARN("[Navigator] Received request to cancel navigation, goal ID: %s", msg->id.c_str());
+      client->cancelGoal();
+
+      ROS_INFO("[Navigator] Playing sound");
+      soundClient->say("New face detected!");
+      ros::Duration(3.0).sleep();
+
+      // TODO Update this to continue navigation after receiving cancel
+    }
+
     // Clean up (used on SIGINT)
     void cleanUp() {
       // Cancel all goals on the client and stop playing sounds
@@ -272,5 +284,11 @@ int main(int argc, char* argv[]) {
 
   // Initialize Navigator
   navigator = new Navigator;
+
+  // Initialize /move_base/cancel listener
+  ros::Subscriber cancelSub =
+      nh.subscribe("/move_base/cancel", 10, &Navigator::cancelCallback, navigator);
+
+  // Navigate through interest points
   navigator->navigateList(interestPoints);
 }
