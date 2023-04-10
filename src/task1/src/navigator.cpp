@@ -10,15 +10,34 @@
 using namespace std;
 using namespace cv;
 
+// Typedef for convenience of communication to the MoveBaseAction action interface
+typedef actionlib::SimpleActionClient<move_base_msgs::MoveBaseAction> MoveBaseClient;
+
+/* ------------------------------------------------------------------------- */
+/*   Navigator structs, enums                                                */
+/* ------------------------------------------------------------------------- */
+
+struct NavigatorPoint {
+    float x;
+    float y;
+    bool  spin;
+};
+
+enum NavigatorState {
+  IDLE,       // Navigation is idle, only applicable at the start
+  NAVIGATING, // Robot is navigating around the map
+  FINISHED,   // Navigation finished successfully
+  FAILED      // Navigation failed
+};
+
 /* ------------------------------------------------------------------------- */
 /*   Navigator class                                                         */
 /* ------------------------------------------------------------------------- */
 
-// Typedef for convenience of communication to the MoveBaseAction action interface
-typedef actionlib::SimpleActionClient<move_base_msgs::MoveBaseAction> MoveBaseClient;
-
 class Navigator {
   public:
+    NavigatorState currentState;
+
     Navigator() {
       ROS_INFO("[Navigator] Initializing");
 
@@ -30,6 +49,25 @@ class Navigator {
       soundClient = new sound_play::SoundClient;
       ROS_INFO("[Navigator] Waiting for SoundClient initialization");
       ros::Duration(2.0).sleep();
+
+      // Everything initialized, set current state to idle
+      currentState = IDLE;
+    }
+
+    void navigateTo(NavigatorPoint point) {
+      move_base_msgs::MoveBaseGoal goal;
+
+      // Set header
+      goal.target_pose.header.frame_id = "map";
+      goal.target_pose.header.stamp    = ros::Time::now();
+      // Set target position
+      goal.target_pose.pose.position.x = point.x;
+      goal.target_pose.pose.position.y = point.y;
+      // TODO Set target orientation
+      goal.target_pose.pose.orientation.w = 1;
+
+      ROS_INFO("[Navigator] Navigating to: (x: %.3f, y: %.3f)", point.x, point.y);
+      client->sendGoalAndWait(goal);
     }
 
   private:
@@ -115,6 +153,21 @@ int main(int argc, char* argv[]) {
     ros::spinOnce();
   }
 
+  NavigatorPoint interestPoints[] = {
+    {  -0.9712396264076233,  0.3039016127586365, true},
+    {    -0.81903076171875,  1.5590908527374268, true},
+    {  0.07623038440942764,   2.691239356994629, true},
+    {   2.1217899322509766,  2.7076127529144287, true}, // edit
+    {   2.5573792457580566,  1.3039171695709229, true},
+    {    1.286680817604065,  0.5794230103492737, true},
+    {    3.354393482208252, 0.27303266525268555, true}, // edit
+    {    3.716524362564087, -0.4115545153617859, true},
+    {   2.0537025928497314,  -1.007872462272644, true},
+    {0.0010448374086990952,  -1.046779990196228, true},
+    {  -0.1095728874206543, -1.1081676483154297, true}, // edit
+  };
+
   // Initialize Navigator
   Navigator navigator;
+  navigator.navigateTo(interestPoints[0]);
 }
