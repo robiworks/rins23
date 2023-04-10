@@ -56,6 +56,7 @@ class Navigator {
       currentState = NavigatorState::IDLE;
     }
 
+    // Navigate to a given point
     void navigateTo(NavigatorPoint point) {
       move_base_msgs::MoveBaseGoal goal;
 
@@ -73,6 +74,15 @@ class Navigator {
 
       // Start monitoring navigation
       monitorNavigation();
+    }
+
+    // Navigate through a list (vector) of points
+    void navigateList(vector<NavigatorPoint> points) {
+      int len = points.size();
+
+      for (int i = 0; i < len; i++) {
+        navigateTo(points[i]);
+      }
     }
 
   private:
@@ -98,6 +108,7 @@ class Navigator {
         }
 
         // TODO Handle incoming messages to stop/explore etc.
+        ros::spinOnce();
 
         ros::Duration(0.5).sleep();
         goalState = client->getState();
@@ -231,5 +242,5 @@ int main(int argc, char* argv[]) {
 
   // Initialize Navigator
   Navigator navigator;
-  navigator.navigateTo(interestPoints[0]);
+  navigator.navigateList(interestPoints);
 }
