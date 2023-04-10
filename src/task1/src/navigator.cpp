@@ -1,10 +1,41 @@
+#include <actionlib/client/simple_action_client.h>
 #include <geometry_msgs/TransformStamped.h>
+#include <move_base_msgs/MoveBaseAction.h>
 #include <nav_msgs/GetMap.h>
 #include <opencv2/core/core.hpp>
 #include <ros/ros.h>
+#include <sound_play/sound_play.h>
+#include <stdlib.h>
 
 using namespace std;
 using namespace cv;
+
+/* ------------------------------------------------------------------------- */
+/*   Navigator class                                                         */
+/* ------------------------------------------------------------------------- */
+
+// Typedef for convenience of communication to the MoveBaseAction action interface
+typedef actionlib::SimpleActionClient<move_base_msgs::MoveBaseAction> MoveBaseClient;
+
+class Navigator {
+  public:
+    Navigator() {
+      ROS_INFO("[Navigator] Initializing");
+
+      // Initialize MoveBaseClient
+      client = new MoveBaseClient("move_base", true);
+      client->waitForServer();
+
+      // Initialize SoundClient
+      soundClient = new sound_play::SoundClient;
+      ROS_INFO("[Navigator] Waiting for SoundClient initialization");
+      ros::Duration(2.0).sleep();
+    }
+
+  private:
+    MoveBaseClient*          client;
+    sound_play::SoundClient* soundClient;
+};
 
 /* ------------------------------------------------------------------------- */
 /*   Map initialization                                                      */
@@ -83,4 +114,7 @@ int main(int argc, char* argv[]) {
   while (!mapReady) {
     ros::spinOnce();
   }
+
+  // Initialize Navigator
+  Navigator navigator;
 }
