@@ -10,6 +10,7 @@
 #include <signal.h>
 #include <sound_play/sound_play.h>
 #include <stdlib.h>
+#include <task1/FacePositionMessage.h>
 
 using namespace std;
 using namespace cv;
@@ -95,6 +96,14 @@ class Navigator {
       for (int i = 0; i < len; i++) {
         navigateTo(points[i]);
       }
+    }
+
+    // Callback to handle /custom_msgs/face_position_message
+    void facePositionCallback(const task1::FacePositionMessageConstPtr &msg) {
+      ROS_INFO("[Navigator] Face position message received");
+      ROS_INFO("[Navigator] Face position: (x: %f, y: %f)", msg->x, msg->y);
+      NavigatorPoint face_point = {msg->x, msg->y, false};
+      navigateTo(face_point);
     }
 
     // Callback to handle /move_base/cancel
@@ -337,6 +346,12 @@ int main(int argc, char* argv[]) {
   ros::Subscriber cancelSub =
       nh.subscribe("/move_base/cancel", 1, &Navigator::cancelCallback, navigator);
 
+  // Initialize the subscriber for the face detection
+  ros::Subscriber facePosSub = 
+      nh.subscribe("/custom_msgs/face_position_message", 10, &Navigator::facePositionCallback, navigator);
+
   // Navigate through interest points
-  navigator->navigateList(interestPoints);
+  //navigator->navigateList(interestPoints);    
+  // spin
+  ros::spin();
 }

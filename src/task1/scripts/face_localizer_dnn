@@ -36,13 +36,47 @@ RADIUS = 3
 FACE_HEIGHT = 120
 FACE_WIDTH = 90
 
-fpm = FacePositionMessage()
-
 ### RUN  ###
 # roslaunch task1 combined.launch
 # rosrun task1 map_goals
 # rosrun task1 face_localizer_dnn
 
+@dataclass
+class FacePositionArrayDto:
+    def __init__(self, fpm: FacePositionMessage, ros_time: rospy.Time):
+        self.fpm: FacePositionMessage = fpm
+        self.ros_time: rospy.Time = ros_time
+
+@dataclass
+class FacePositionsHolder:
+    def __init__(self):
+        self.face_positions: FacePositionArrayDto = []
+        self.tol = 0.2
+        self.time_tol = 5 # 2 seconds
+
+    def add_face_position(self, fpm: FacePositionMessage, ros_time: rospy.Time) -> bool:
+        def check_fpm(fpm1, fpm2) -> bool:
+            return (
+                abs(fpm1.x - fpm2.x) < self.tol
+                and abs(fpm1.y - fpm2.y) < self.tol
+                and abs(fpm1.z - fpm2.z) < self.tol
+            )
+
+        def check_time(time1, time2) -> bool:
+            time_diff = time1 - time2
+            time_diff_sec = time_diff.to_sec()
+            return abs(time_diff_sec) < self.time_tol
+
+        for face_position in self.face_positions:
+            #if check_fpm(face_position.fpm, fpm):
+            #    return False
+            if check_time(face_position.ros_time, ros_time):
+                return False
+
+        print("NAVIGATING TO", fpm.x, fpm.y, fpm.z)
+
+        self.face_positions.append(FacePositionArrayDto(fpm, ros_time))
+        return True
 
 @dataclass
 class Face:
@@ -153,6 +187,12 @@ class face_localizer:
             "/msg/coords/", PointStamped, queue_size=10
         )
 
+        self.custom_msgs_face_position_publisher = rospy.Publisher(
+                "/custom_msgs/face_position_message",
+                FacePositionMessage,
+                queue_size=10,
+        )
+
         self.dims = (0, 0, 0)
         self.log_dir = "/tmp/face_localizer_log"
         self.timestamp = datetime.datetime.now().isoformat()
@@ -163,7 +203,9 @@ class face_localizer:
 
         self.face_descriptors = FaceDescriptors()
 
-    def get_pose(self, coords, dist, stamp):
+        self.face_positions_holder = FacePositionsHolder()
+
+    def get_pose(self, coords, dist, stamp, return_angle=False):
         """Calculate the position of the detected face"""
 
         k_f = 554  # kinect focal length in pixels
@@ -198,7 +240,11 @@ class face_localizer:
             print(e)
             pose = None
 
-        return pose
+        if return_angle:
+            return pose, angle_to_target
+        else:
+            return pose
+
 
     def find_faces(self):
         try:
@@ -260,7 +306,7 @@ class face_localizer:
                 # Publish the coordinates to the /msg/coords/
                 # Create the PointStamped message
                 # Publish the message
-                if face_distance > 0.8 and face_distance < 3.0:
+                if face_distance > 0.8 and face_distance < 2.2:
                     self.report_close_face(face_distance, box, depth_time, "far_away")
                 elif face_distance < 0.5:
                     self.report_close_face(face_distance, box, depth_time, "too_close")
@@ -287,12 +333,19 @@ class face_localizer:
         x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
 
         # Get the pose of the face
-        pose = self.get_pose((x1, x2, y1, y2), face_distance - face_distance * 0.2, depth_time)
-        print("####################")
-        print("[~] Status: ", close)
-        print("[~] Distance: ", face_distance)
-        print("[~] Pose: ", pose)
-        print("####################")
+        pose, angle = self.get_pose((x1, x2, y1, y2), face_distance - (face_distance * 0.2), depth_time, return_angle=True)
+        if pose is None:
+            return
+        fpm = FacePositionMessage()
+        fpm.x = pose.position.x
+        fpm.y = pose.position.y
+        fpm.z = pose.position.z
+        fpm.angle = angle
+
+        if self.face_positions_holder.add_face_position(fpm, rospy.Time.now()):
+            self.custom_msgs_face_position_publisher.publish(fpm)
+        else:
+            return
 
 
 def main():
