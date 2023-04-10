@@ -1,6 +1,8 @@
 #include <actionlib/client/simple_action_client.h>
 #include <actionlib/client/simple_client_goal_state.h>
+#include <cmath>
 #include <geometry_msgs/TransformStamped.h>
+#include <geometry_msgs/Twist.h>
 #include <move_base_msgs/MoveBaseAction.h>
 #include <nav_msgs/GetMap.h>
 #include <opencv2/core/core.hpp>
@@ -57,6 +59,10 @@ class Navigator {
       currentState = NavigatorState::IDLE;
     }
 
+    Navigator(ros::Publisher* cmdvelPub) : Navigator() {
+      cmdvelPublisher = cmdvelPub;
+    }
+
     // Navigate to a given point
     void navigateTo(NavigatorPoint point) {
       move_base_msgs::MoveBaseGoal goal;
@@ -72,9 +78,14 @@ class Navigator {
 
       ROS_INFO("[Navigator] Navigating to: (x: %.3f, y: %.3f)", point.x, point.y);
       client->sendGoal(goal);
+      currentGoal = point;
 
       // Start monitoring navigation
       monitorNavigation();
+
+      if (point.spin) {
+        spin(360.0);
+      }
     }
 
     // Navigate through a list (vector) of points
@@ -89,13 +100,15 @@ class Navigator {
     // Callback to handle /move_base/cancel
     void cancelCallback(const actionlib_msgs::GoalIDConstPtr &msg) {
       ROS_WARN("[Navigator] Received request to cancel navigation, goal ID: %s", msg->id.c_str());
-      client->cancelGoal();
+      // client->cancelGoal();
 
       ROS_INFO("[Navigator] Playing sound");
       soundClient->say("New face detected!");
       ros::Duration(3.0).sleep();
 
-      // TODO Update this to continue navigation after receiving cancel
+      // Continue navigation after receiving cancel
+      // The navigation goal is kept even after cancel so this is not required
+      // navigateTo(currentGoal);
     }
 
     // Clean up (used on SIGINT)
@@ -108,7 +121,9 @@ class Navigator {
 
   private:
     MoveBaseClient*          client;
+    NavigatorPoint           currentGoal;
     sound_play::SoundClient* soundClient;
+    ros::Publisher*          cmdvelPublisher;
     bool                     isKilled = false;
 
     void monitorNavigation() {
@@ -129,7 +144,8 @@ class Navigator {
             break;
         }
 
-        // TODO Handle incoming messages to stop/explore etc.
+        // Handle incoming messages to stop/explore etc.
+        // They will be processed as callbacks
         ros::spinOnce();
 
         ros::Duration(0.5).sleep();
@@ -166,6 +182,35 @@ class Navigator {
           currentState = NavigatorState::FAILED;
           break;
       }
+    }
+
+    static constexpr float SPIN_RATE        = 4;
+    static constexpr float SPIN_ANGULAR_VEL = 0.85;
+    static constexpr float DEGREE_RATIO     = 29.75 / 360;
+
+    void spin(float degrees) {
+      ros::Rate            rate(SPIN_RATE);
+      geometry_msgs::Twist msg;
+
+      // Set parameters for rotation
+      msg.linear.x  = 0.0;
+      msg.angular.z = SPIN_ANGULAR_VEL;
+
+      // Calculate number of iterations required to spin given degrees
+      int iterations = round((degrees * DEGREE_RATIO) / SPIN_ANGULAR_VEL);
+      for (int i = 0; i < iterations; i++) {
+        cmdvelPublisher->publish(msg);
+        rate.sleep();
+
+        // Process any callbacks that might have arrived while spinning
+        // TODO Ideally this should be removed from here and we should get face location
+        // TODO Then rotate accordingly, approach and greet
+        ros::spinOnce();
+      }
+
+      // Stop the robot after it finishes rotating
+      msg.angular.z = 0;
+      cmdvelPublisher->publish(msg);
     }
 };
 
@@ -282,12 +327,15 @@ int main(int argc, char* argv[]) {
     {  -0.1095728874206543, -1.1081676483154297, true},
   };
 
-  // Initialize Navigator
-  navigator = new Navigator;
+  // Initialize publisher for robot rotation
+  ros::Publisher cmdvelPub = nh.advertise<geometry_msgs::Twist>("/cmd_vel_mux/input/navi", 10);
 
-  // Initialize /move_base/cancel listener
+  // Initialize Navigator
+  navigator = new Navigator(&cmdvelPub);
+
+  // Initialize cancel subscriber
   ros::Subscriber cancelSub =
-      nh.subscribe("/move_base/cancel", 10, &Navigator::cancelCallback, navigator);
+      nh.subscribe("/move_base/cancel", 1, &Navigator::cancelCallback, navigator);
 
   // Navigate through interest points
   navigator->navigateList(interestPoints);
