@@ -86,10 +86,39 @@ class Navigator {
         ros::Duration(0.5).sleep();
         goalState = client->getState();
 
-        // TODO Handle incoming messages to stop/explore etc.
+        // TODO Handle incoming messages and state to stop/explore etc.
       }
 
-      // TODO Handle terminal states
+      // Handle terminal states
+      currentState = NavigatorState::FINISHED;
+      switch (goalState.state_) {
+        // The client cancels a goal before the action server has started working on it
+        case actionlib::SimpleClientGoalState::RECALLED:
+          ROS_WARN("[Navigator] Client cancelled a goal before the server started processing it!");
+          break;
+        // The action server rejected the goal for some reason
+        case actionlib::SimpleClientGoalState::REJECTED:
+          ROS_WARN("[Navigator] Action server rejected the goal!");
+          currentState = NavigatorState::FAILED;
+          break;
+        // The client cancels a goal that is currently being worked on by the action server
+        case actionlib::SimpleClientGoalState::PREEMPTED:
+          ROS_WARN("[Navigator] Client cancelled a goal currently being worked on!");
+          break;
+        // The action server completed the goal but encountered an error in doing so
+        case actionlib::SimpleClientGoalState::ABORTED:
+          ROS_WARN("[Navigator] Goal completed but an error was encountered!");
+          break;
+        // The action server successfully completed the goal
+        case actionlib::SimpleClientGoalState::SUCCEEDED:
+          ROS_INFO("[Navigator] Successfully completed goal!");
+          break;
+        // The client lost contact with the action server
+        case actionlib::SimpleClientGoalState::LOST:
+          ROS_WARN("[Navigator] Client lost contact with the action server!");
+          currentState = NavigatorState::FAILED;
+          break;
+      }
     }
 };
 
