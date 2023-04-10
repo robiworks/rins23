@@ -5,6 +5,7 @@
 #include <nav_msgs/GetMap.h>
 #include <opencv2/core/core.hpp>
 #include <ros/ros.h>
+#include <signal.h>
 #include <sound_play/sound_play.h>
 #include <stdlib.h>
 
@@ -85,14 +86,23 @@ class Navigator {
       }
     }
 
+    // Clean up (used on SIGINT)
+    void cleanUp() {
+      // Cancel all goals on the client and stop playing sounds
+      client->cancelAllGoals();
+      soundClient->stopAll();
+      isKilled = true;
+    }
+
   private:
     MoveBaseClient*          client;
     sound_play::SoundClient* soundClient;
+    bool                     isKilled = false;
 
     void monitorNavigation() {
       // Monitor navigation until it reaches a terminal state
       actionlib::SimpleClientGoalState goalState = client->getState();
-      while (!goalState.isDone()) {
+      while (!goalState.isDone() && !isKilled) {
         ROS_DEBUG("[Navigator] Current goal state: %s", goalState.toString().c_str());
 
         // Update currentState according to goal state
@@ -214,10 +224,30 @@ void mapCallback(const nav_msgs::OccupancyGridConstPtr &msg_map) {
   mapReady = true;
 }
 
+/* ------------------------------------------------------------------------- */
+/*   Main                                                                    */
+/* ------------------------------------------------------------------------- */
+
+Navigator* navigator;
+
+void sigintHandler(int sig) {
+  ROS_WARN("Received SIGINT, cleaning up and stopping node");
+
+  if (navigator != NULL) {
+    navigator->cleanUp();
+  }
+
+  // Call ROS shutdown
+  ros::shutdown();
+}
+
 int main(int argc, char* argv[]) {
   // Initialize node
   ros::init(argc, argv, "navigator");
   ros::NodeHandle nh;
+
+  // Register SIGINT handler
+  signal(SIGINT, sigintHandler);
 
   // Wait for map initialization
   ros::Subscriber mapSub = nh.subscribe("map", 10, &mapCallback);
@@ -241,6 +271,6 @@ int main(int argc, char* argv[]) {
   };
 
   // Initialize Navigator
-  Navigator navigator;
-  navigator.navigateList(interestPoints);
+  navigator = new Navigator;
+  navigator->navigateList(interestPoints);
 }
