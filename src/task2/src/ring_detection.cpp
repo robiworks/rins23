@@ -14,6 +14,58 @@ typedef sync_policies::ApproximateTime<Image, Image> ApproxSync;
 
 bool debug;
 
+std::vector<cv::Vec3f> detectCircles(cv::Mat input_img, cv::Mat output_img)
+{
+    std::vector<cv::Vec3f> circles, validCircles;
+
+    // Arugments for hough transform
+    int minRadius = 10;
+    int maxRadius = 200;
+    int minDist = 100;
+    float imageScale = 2;
+    int cannyThreshold = 100;
+    int accumulatorThreshold = 75;
+
+    int centerThreshold = 100;
+
+    // Apply the Hough Transform to find the circles
+    cv::HoughCircles(input_img, circles, cv::HOUGH_GRADIENT, imageScale, minDist,
+        cannyThreshold, accumulatorThreshold, minRadius, maxRadius);
+
+    ROS_INFO("Found %d circles", (int)circles.size());
+
+    // Draw the circles detected
+    for (size_t i = 0; i < circles.size(); i++)
+    {
+        cv::Point center(cvRound(circles[i][0]), cvRound(circles[i][1]));
+        int radius = cvRound(circles[i][2]);
+
+        // We want only hollow circles
+        int center_value = input_img.at<uchar>(center);
+
+        if (center_value > centerThreshold)
+        {
+            ROS_INFO("Circle %d is not hollow", (int)i);
+            continue;
+        }
+
+        // Store valid circles
+        validCircles.insert(validCircles.end(), circles[i]);
+
+        // Draw the circle outline
+        if (debug)
+        {
+            // Draw the center of the circle
+            cv::circle(output_img, center, 3, cv::Scalar(0, 255, 0), -1);
+
+            // Draw the circle outline
+            cv::circle(output_img, center, radius, cv::Scalar(0, 0, 255), 1);
+        }
+    }
+
+    return validCircles;
+}
+
 void image_callback(const sensor_msgs::Image::ConstPtr &rgb_image, const sensor_msgs::Image::ConstPtr &depth_image)
 {
     cv_bridge::CvImageConstPtr cv_ptr;
@@ -38,7 +90,8 @@ void image_callback(const sensor_msgs::Image::ConstPtr &rgb_image, const sensor_
     cv::Mat rgb_img = cv::Mat(gray_img.size(), CV_8UC3);
     cv::cvtColor(gray_img, rgb_img, cv::COLOR_GRAY2RGB);
     
-    
+    // Detect the circles
+    std::vector<cv::Vec3f> circles = detectCircles(gray_img, rgb_img);
 }
 
 int main(int argc, char **argv)
