@@ -4,6 +4,7 @@
 #include <message_filters/synchronizer.h>
 #include <message_filters/sync_policies/approximate_time.h>
 #include <cv_bridge/cv_bridge.h>
+#include <opencv2/opencv.hpp>
 
 
 using namespace message_filters;
@@ -14,9 +15,39 @@ typedef sync_policies::ApproximateTime<Image, Image> ApproxSync;
 
 bool debug;
 
-std::vector<cv::Vec3f> detectCircles(cv::Mat input_img, cv::Mat output_img)
+void getDepths(std::vector<cv::Vec4f> circles,
+    const cv_bridge::CvImageConstPtr &depth_f,
+    const cv_bridge::CvImageConstPtr &rgb_image,
+    cv::Mat output, std_msgs::Header depth_header) 
 {
-    std::vector<cv::Vec3f> circles, validCircles;
+    ROS_INFO("Getting depths");
+
+    // // Draw the circles detected
+    // for (size_t i = 0; i < circles.size(); i++)
+    // {
+    //     cv::Point center(cvRound(circles[i][0]), cvRound(circles[i][1]));
+    //     int radius = cvRound(circles[i][2]);
+
+    //     // Get the depth of the center of the circle
+    //     float depth = depth_f->image.at<float>(center);
+
+    //     // Draw the center of the circle
+    //     cv::circle(output, center, 3, cv::Scalar(0, 255, 0), -1);
+
+    //     // Draw the circle outline
+    //     cv::circle(output, center, radius, cv::Scalar(0, 0, 255), 1);
+
+    //     // Draw the depth
+    //     cv::putText(output, std::to_string(depth), center, cv::FONT_HERSHEY_SIMPLEX, 1, cv::Scalar(0, 0, 255), 2);
+    // }
+
+    cv::imshow("rgb", output);
+    cv::waitKey(1);
+}
+
+std::vector<cv::Vec4f> detectCircles(cv::Mat input_img, cv::Mat output_img)
+{
+    std::vector<cv::Vec4f> circles, validCircles;
 
     // Arugments for hough transform
     int minRadius = 10;
@@ -55,6 +86,9 @@ std::vector<cv::Vec3f> detectCircles(cv::Mat input_img, cv::Mat output_img)
         // Draw the circle outline
         if (debug)
         {
+
+            ROS_WARN("Circle radius: %d", radius);
+
             // Draw the center of the circle
             cv::circle(output_img, center, 3, cv::Scalar(0, 255, 0), -1);
 
@@ -91,7 +125,9 @@ void image_callback(const sensor_msgs::Image::ConstPtr &rgb_image, const sensor_
     cv::cvtColor(gray_img, rgb_img, cv::COLOR_GRAY2RGB);
     
     // Detect the circles
-    std::vector<cv::Vec3f> circles = detectCircles(gray_img, rgb_img);
+    std::vector<cv::Vec4f> circles = detectCircles(gray_img, rgb_img);
+
+    getDepths(circles, cv_ptr, cv_rgb, rgb_img, depth_image->header);
 }
 
 int main(int argc, char **argv)
