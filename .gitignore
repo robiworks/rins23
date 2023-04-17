@@ -88,4 +88,6 @@ qtcreator-*
 # Catkin custom files
 CATKIN_IGNORE
 
+.vscode/
+
 # End of https://www.toptal.com/developers/gitignore/api/ros,c++
