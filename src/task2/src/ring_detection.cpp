@@ -5,6 +5,7 @@
 #include <message_filters/sync_policies/approximate_time.h>
 #include <cv_bridge/cv_bridge.h>
 #include <opencv2/opencv.hpp>
+#include <task2/Pose.h>
 
 
 using namespace message_filters;
@@ -22,27 +23,21 @@ void getDepths(std::vector<cv::Vec4f> circles,
 {
     ROS_INFO("Getting depths");
 
-    // // Draw the circles detected
-    // for (size_t i = 0; i < circles.size(); i++)
-    // {
-    //     cv::Point center(cvRound(circles[i][0]), cvRound(circles[i][1]));
-    //     int radius = cvRound(circles[i][2]);
+    if (debug)
+    {
+        cv::imshow("rgb", output);
+        cv::waitKey(1);
+    }
 
-    //     // Get the depth of the center of the circle
-    //     float depth = depth_f->image.at<float>(center);
+    // Get the depth image
+    for (size_t i = 0; i < circles.size(); i++){
+        int minX = std::max(cvRound(circles[i][0] - circles[i][2]), 0);
+        int maxX = std::min(cvRound(circles[i][0] + circles[i][2]), depth_f->image.cols);
+        int minY = std::max(cvRound(circles[i][1] - circles[i][2]), 0);
+        int maxY = std::min(cvRound(circles[i][1] + circles[i][2]), depth_f->image.rows);
 
-    //     // Draw the center of the circle
-    //     cv::circle(output, center, 3, cv::Scalar(0, 255, 0), -1);
-
-    //     // Draw the circle outline
-    //     cv::circle(output, center, radius, cv::Scalar(0, 0, 255), 1);
-
-    //     // Draw the depth
-    //     cv::putText(output, std::to_string(depth), center, cv::FONT_HERSHEY_SIMPLEX, 1, cv::Scalar(0, 0, 255), 2);
-    // }
-
-    cv::imshow("rgb", output);
-    cv::waitKey(1);
+        task2::Pose pose;
+    }
 }
 
 std::vector<cv::Vec4f> detectCircles(cv::Mat input_img, cv::Mat output_img)

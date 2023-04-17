@@ -26,6 +26,7 @@ find_package(catkin REQUIRED COMPONENTS
   geometry_msgs
   tf2_ros
   tf2_geometry_msgs
+  message_generation
 )
 
 ## Add include directories
@@ -47,6 +48,19 @@ link_directories(
 
 link_libraries(${Boost_LIBRARIES} ${catkin_LIBRARIES} ${PCL_LIBRARIES})
 
+## Add message files
+add_message_files(
+  FILES
+  Pose.msg
+)
+
+## Generate message files
+generate_messages(
+  DEPENDENCIES
+  std_msgs
+  geometry_msgs
+)
+
 ## Declare the catkin package
 catkin_package(
   LIBRARIES
@@ -54,6 +68,7 @@ catkin_package(
     pcl_ros_io
     pcl_ros_tf
   CATKIN_DEPENDS
+    message_runtime
     cv_bridge
     dynamic_reconfigure
     pcl_conversions

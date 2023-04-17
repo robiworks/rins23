@@ -1,7 +1,7 @@
 <launch>
   
   <!-- Map server -->
-  <arg name="map_file" default="$(find task1)/config/map2_edited.yaml"/>
+  <arg name="map_file" default="$(find task2)/config/map2_edited.yaml"/>
   <node name="map_server" pkg="map_server" type="map_server" args="$(arg map_file)" />
 
   <!-- Localization -->
@@ -18,5 +18,5 @@
   <include file="$(find turtlebot_navigation)/launch/includes/move_base.launch.xml"/>
 
   <!-- Tell the robot that it is not THAT fat -->
-  <rosparam file="$(find task1)/config/amcl_config.yaml" />
+  <rosparam file="$(find task2)/config/amcl_config.yaml" />
 </launch>
