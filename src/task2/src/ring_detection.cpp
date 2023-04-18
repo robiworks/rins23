@@ -6,13 +6,16 @@
 #include <cv_bridge/cv_bridge.h>
 #include <opencv2/opencv.hpp>
 #include <task2/Pose.h>
-
+#include <geometry_msgs/PointStamped.h>
+#include <geometry_msgs/Pose.h>
 
 using namespace message_filters;
 using namespace sensor_msgs;
 using namespace cv_bridge;
 
 typedef sync_policies::ApproximateTime<Image, Image> ApproxSync;
+
+ros::Publisher pose_pub;
 
 bool debug;
 
@@ -21,7 +24,7 @@ void getDepths(std::vector<cv::Vec4f> circles,
     const cv_bridge::CvImageConstPtr &rgb_image,
     cv::Mat output, std_msgs::Header depth_header) 
 {
-    ROS_INFO("Getting depths");
+    // ROS_INFO("Getting depths");
 
     if (debug)
     {
@@ -37,6 +40,97 @@ void getDepths(std::vector<cv::Vec4f> circles,
         int maxY = std::min(cvRound(circles[i][1] + circles[i][2]), depth_f->image.rows);
 
         task2::Pose pose;
+
+        pose.color.r = 0;
+        pose.color.g = 0;
+        pose.color.b = 0;
+
+        // Get the average depth
+
+        cv::rectangle(output, cv::Point(minX, minY), cv::Point(maxX, maxY), cv::Scalar(122, 255, 0), 1);
+
+        float accumulator = 0;
+        int count = 0;
+
+        for (int y = minY; y < maxY; y++)
+        {
+            for (int x = minX; x < maxX; x++)
+            {
+                float depth = depth_f->image.at<float>(y, x);
+
+                if (depth > 0.1)
+                {
+                    float dist = sqrt(pow(x - circles[i][0], 2) + pow(y - circles[i][1], 2));
+
+                    if (dist <= circles[i][2])
+                    {
+                        accumulator += depth;
+                        count++;
+
+                        cv::Vec3b rgb_vals = rgb_image->image.at<cv::Vec3b>(y, x);
+
+                        pose.color.r += rgb_vals[2];
+                        pose.color.g += rgb_vals[1];
+                        pose.color.b += rgb_vals[0];
+
+                        output.at<cv::Vec3b>(y, x) = output.at<cv::Vec3b>(y, x) + cv::Vec3b(100, 100, 0);
+                    }
+                }
+            }
+        }
+
+        if (count < 20)
+            return;
+        
+        float distance = accumulator / count;
+
+        pose.color.r /= count;
+        pose.color.g /= count;
+        pose.color.b /= count;
+
+        // Debug the color
+        if (debug)
+        {
+            ROS_INFO("Color: %f, %f, %f", pose.color.r, pose.color.g, pose.color.b);
+        }
+
+        // Calculate the distance with angles and the depth
+        float kf = 554;
+
+        double angle_to_target = atan2(depth_f->image.cols / 2 - circles[i][0], kf);
+
+        float x_target = distance * cos(angle_to_target);
+        float y_target = distance * sin(angle_to_target);
+
+        geometry_msgs::PointStamped point;
+
+        point.header.frame_id = "camera_rgb_optical_frame";
+        point.header.stamp = depth_header.stamp;
+        point.point.x = -y_target;
+        point.point.y = 0;
+        point.point.z = x_target; //Try switching .y and .z
+
+        // Print point stamped
+        ROS_INFO("Point: %f, %f, %f", point.point.x, point.point.y, point.point.z);
+
+        geometry_msgs::Pose pose_msg;
+
+        try
+        {
+            pose_msg.position.x = point.point.x;
+            pose_msg.position.y = point.point.y;
+            pose_msg.position.z = point.point.z;
+
+            pose.pose = pose_msg;
+
+            pose_pub.publish(pose);
+        }
+        catch(const std::exception& e)
+        {
+            ROS_ERROR("Transform error: %s", e.what());
+            continue;
+        }
+        
     }
 }
 
@@ -58,7 +152,7 @@ std::vector<cv::Vec4f> detectCircles(cv::Mat input_img, cv::Mat output_img)
     cv::HoughCircles(input_img, circles, cv::HOUGH_GRADIENT, imageScale, minDist,
         cannyThreshold, accumulatorThreshold, minRadius, maxRadius);
 
-    ROS_INFO("Found %d circles", (int)circles.size());
+    // ROS_INFO("Found %d circles", (int)circles.size());
 
     // Draw the circles detected
     for (size_t i = 0; i < circles.size(); i++)
@@ -162,6 +256,9 @@ int main(int argc, char **argv)
 
     // Register a callback for the synchronizer. _1 and _2 are placeholders for the rgb and depth images
     sync.registerCallback(boost::bind(&image_callback, _1, _2));
+
+    // Create a ROS publisher for the color pose
+    pose_pub = nh.advertise<task2::Pose>("pose", 1000);
 
     // Spin
     ros::spin();
