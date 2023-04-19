@@ -89,5 +89,6 @@ qtcreator-*
 CATKIN_IGNORE
 
 .vscode/
+src/task2/scripts/rings.py
 
 # End of https://www.toptal.com/developers/gitignore/api/ros,c++
