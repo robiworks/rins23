@@ -23,7 +23,7 @@
   <!-- Arm -->
   <include file="$(find turtlebot_arm_control)/launch/turtlebot_arm_control.launch"/>
 
-  <include file="$(find exercise7)/launch/includes/$(arg base).arm.launch.xml">
+  <include file="$(find task2)/launch/includes/$(arg base).arm.launch.xml">
     <arg name="base" value="$(arg base)"/>
     <arg name="stacks" value="$(arg stacks)"/>
     <arg name="3d_sensor" value="$(arg 3d_sensor)"/>
