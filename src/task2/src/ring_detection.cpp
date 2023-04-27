@@ -251,7 +251,7 @@ int main(int argc, char** argv) {
   sync.registerCallback(boost::bind(&image_callback, _1, _2));
 
   // Create a ROS publisher for the color pose
-  pose_pub = nh.advertise<task2::RingPoseMsg>("pose", 1000);
+  pose_pub = nh.advertise<task2::RingPoseMsg>("/custom_msgs/ring_detection", 1000);
 
   // Spin
   ros::spin();
