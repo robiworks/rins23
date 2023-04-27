@@ -1,0 +1,115 @@
+#!/usr/bin/python3
+
+import sys
+import rospy
+import cv2
+import numpy as np
+import tf2_geometry_msgs
+import tf2_ros
+import time
+
+from os.path import dirname, join
+import os
+import datetime
+from sklearn.cluster import DBSCAN
+from task2.msg import RingPoseMsg
+
+
+class RingDifferentialLocalizer:
+    def __init__(self, eps=0.16, min_samples=2):
+        self.data = []
+        self.eps = eps
+        self.min_samples = min_samples
+        self.num_clusters = 0
+
+    def add_point(self, point):
+        if len(point) != 5:
+            raise ValueError("The input point must be a 5D vector")
+        self.data.append(point)
+        clusters = self.perform_dbscan()
+        if clusters is None:
+            return
+        if len(clusters) < self.num_clusters:
+            print("Well something is not OK with clustering!")
+        elif len(clusters) > self.num_clusters:
+            print("NEW Ring detected!")
+            # Do reverse lookup to find the new ring
+            # TODO -> was already done :facepalm:
+        self.num_clusters = len(clusters)
+        return
+
+    def perform_dbscan(self) -> np.ndarray:
+        data_array = np.array(self.data)
+        data_array = data_array[:, 0:2]  # Only use the x and y coordinates
+
+        # Perform DBSCAN clustering
+        dbscan = DBSCAN(eps=self.eps, min_samples=self.min_samples)
+        dbscan.fit(data_array)
+
+        centroids = []
+        for cluster_label in set(dbscan.labels_):
+            if cluster_label == -1:  # This is the label for noise points
+                continue
+            cluster_points = data_array[dbscan.labels_ == cluster_label]
+            centroid = np.mean(cluster_points, axis=0)
+            centroids.append(centroid)
+
+        if len(centroids) == 0:
+            return None
+
+        return np.array(centroids)
+
+
+class RingLocalizer:
+    def __init__(self):
+        rospy.init_node("ring_localizer", anonymous=True)
+
+        # Setup publishers
+        self.ring_pose_pub = rospy.Publisher(
+            "/custom_msgs/nav/green_ring_detected", RingPoseMsg, queue_size=10
+        )
+        self.ring_pose_pub = rospy.Publisher(
+            "/custom_msgs/nav/ring_detected", RingPoseMsg, queue_size=10
+        )
+
+        # Setup subscribers
+        self.ring_detected_sub = rospy.Subscriber(
+            "/custom_msgs/ring_detection", RingPoseMsg, self.ring_detetected_callback
+        )
+
+        # Setup differential localizer
+        self.differential_localizer = RingDifferentialLocalizer()
+
+    def ring_detetected_callback(self, msg: RingPoseMsg):
+        """
+        Callback function for the ring detected topic.
+        :param msg: RingPoseMsg
+        :return: None
+        """
+        x = np.array(
+            [
+                msg.pose.position.x,
+                msg.pose.position.y,
+                msg.color.r,
+                msg.color.g,
+                msg.color.b,
+            ]
+        )
+
+        self.differential_localizer.add_point(x)
+
+
+def main():
+    ring_localizer = RingLocalizer()
+    print("Ring localizer node started")
+
+    rate = rospy.Rate(1)
+    while not rospy.is_shutdown():
+        rate.sleep()
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except rospy.ROSInterruptException:
+        pass
