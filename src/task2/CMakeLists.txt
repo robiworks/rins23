@@ -20,6 +20,7 @@ find_package(catkin REQUIRED COMPONENTS
   rosbag
   rosconsole
   roscpp
+  rospy
   roslib
   sensor_msgs
   std_msgs
@@ -74,6 +75,7 @@ catkin_package(
     pcl_conversions
     pcl_msgs
     roscpp
+    rospy
     sensor_msgs
     std_msgs
   DEPENDS
