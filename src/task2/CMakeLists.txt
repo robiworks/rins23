@@ -84,6 +84,9 @@ catkin_package(
     PCL
 )
 
+add_executable(task2_navigator src/navigator.cpp)
+target_link_libraries(task2_navigator ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} ${message_runtime_LIBRARIES})
+
 add_executable(circle src/ring_detection.cpp)
 add_dependencies(circle ${catkin_EXPORTED_TARGETS})
 
