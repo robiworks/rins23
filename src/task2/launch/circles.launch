@@ -6,4 +6,14 @@
 
         <param name="debug" type="bool" value="true"/>
     </node>
+
+    <!-- Arm Camera -->
+   
+   <!-- Uncomment to use  -->
+    <!-- <node pkg="task2" type="circle" name="circle_arm" output="screen">
+        <param name="depth" type="string" value="/arm_camera/depth/image_raw"/>
+        <param name="rgb" type="string" value="/arm_camera/rgb/image_raw"/>
+
+        <param name="debug" type="bool" value="true"/>
+    </node> -->
 </launch>
