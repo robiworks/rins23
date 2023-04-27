@@ -52,7 +52,7 @@ link_libraries(${Boost_LIBRARIES} ${catkin_LIBRARIES} ${PCL_LIBRARIES})
 ## Add message files
 add_message_files(
   FILES
-  Pose.msg
+  RingPoseMsg.msg
 )
 
 ## Generate message files
