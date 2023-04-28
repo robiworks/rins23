@@ -197,9 +197,11 @@ class RingLocalizer:
         if color == "Green":
             if is_new:
                 self.green_ring_pub.publish(rpm)
+                self.color_pub.publish(ColorMsg(color=color))
             print("Green ring detected at: ", rpm)
         else:
             if is_new:
+                self.color_pub.publish(ColorMsg(color=color))
                 self.color_pub.publish(ColorMsg(color=color))
             print(f"{color} ring detected at:", rpm)
 
