@@ -84,11 +84,6 @@ class Navigator {
 
       // Start monitoring navigation
       monitorNavigation();
-
-      // Spin 360 degrees if the interest points wants us to do so
-      if (point.spin) {
-        spin(360.0);
-      }
     }
 
     // Navigate through a list (vector) of points
@@ -120,11 +115,11 @@ class Navigator {
           msg->color.c_str()
       );
       client->cancelGoal();
+      goalCancelled = true;
 
+      // Say the color of the ring
       soundClient->say(msg->color);
-      ros::Duration(3.0).sleep();
-
-      navigateTo(currentGoal);
+      ros::Duration(1.0).sleep();
     }
 
     // Clean up (used on SIGINT)
@@ -140,7 +135,8 @@ class Navigator {
     NavigatorPoint           currentGoal;
     sound_play::SoundClient* soundClient;
     ros::Publisher*          cmdvelPublisher;
-    bool                     isKilled = false;
+    bool                     isKilled      = false;
+    bool                     goalCancelled = false;
 
     void monitorNavigation() {
       // Monitor navigation until it reaches a terminal state
@@ -183,6 +179,13 @@ class Navigator {
         // The client cancels a goal that is currently being worked on by the action server
         case actionlib::SimpleClientGoalState::PREEMPTED:
           ROS_WARN("[Navigator] Client cancelled a goal currently being worked on!");
+
+          // Check if we cancelled the goal
+          if (goalCancelled) {
+            goalCancelled = false;
+            navigateTo(currentGoal);
+          }
+
           break;
         // The action server completed the goal but encountered an error in doing so
         case actionlib::SimpleClientGoalState::ABORTED:
@@ -191,6 +194,12 @@ class Navigator {
         // The action server successfully completed the goal
         case actionlib::SimpleClientGoalState::SUCCEEDED:
           ROS_INFO("[Navigator] Successfully completed goal!");
+
+          // Spin 360 degrees if the interest points wants us to do so
+          if (currentGoal.spin) {
+            spin(360.0);
+          }
+
           break;
         // The client lost contact with the action server
         case actionlib::SimpleClientGoalState::LOST:
