@@ -32,7 +32,7 @@ class RingDifferentialLocalizer:
 
     def add_point(self, point) -> Tuple[RingPoseMsg, str]:
         if len(point) != 5:
-            raise ValueError("The input point must be a 5D vector")
+            raise ValueError("Point must be of length 5")
 
         timestamp = time.time()
         self.frame_data.append((timestamp, point))
@@ -41,21 +41,20 @@ class RingDifferentialLocalizer:
 
         clusters = self.perform_dbscan()
 
-        print("Clusters: ", clusters)
-
         if clusters is None:
             return None, None
 
         for cluster in clusters:
-            # Frame data should have at least 5 members
-            if len(self.frame_data) < 5:
-                raise ValueError("Frame data must have at least 5 members")
+            # Frame data should have at least 3 members
+            if len(self.frame_data) < 3:
+                return None, None
 
             if not self.is_cluster_in_global_centroids(cluster):
                 self.global_centroids.append(cluster)
                 print("New ring detected at: ", cluster)
                 rpm = self.perform_reverse_lookup(cluster)
                 rgb = np.array([rpm.color.r, rpm.color.g, rpm.color.b])
+                print("rgb", rgb)
                 if self.is_close_to_green(rgb):
                     return rpm, "green"
                 else:
@@ -111,7 +110,7 @@ class RingDifferentialLocalizer:
         # find the smallest similraity
         min_sim = min(similarities)
         min_sim_idx = similarities.index(min_sim)
-        ring_pose = self.frame_data[min_sim_idx]
+        ring_pose = self.frame_data[min_sim_idx][1]
 
         rpm = RingPoseMsg()
         rpm.pose.position.x = ring_pose[0]
@@ -122,8 +121,8 @@ class RingDifferentialLocalizer:
 
         return rpm
 
-    def is_close_to_green(rgb, threshold=50):
-        green = np.array([0, 255, 0])
+    def is_close_to_green(self, rgb, threshold=50):
+        green = np.array([0.0, 255.0, 0.0])
         distance = np.linalg.norm(np.array(rgb) - green)
         return distance < threshold
 
