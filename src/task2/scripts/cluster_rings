@@ -18,11 +18,14 @@ import time
 from typing import Tuple
 
 
+RINGS_ON_POLYGON = ["Green", "Red", "Blue", "Black"]
+
 class RingDifferentialLocalizer:
     def __init__(
-        self, dbscan_eps=0.3, cluster_eps=0.3, min_samples=2, frame_duration=5
+        self, color, dbscan_eps=0.5, cluster_eps=0.5, min_samples=2, frame_duration=5
     ):
         self.frame_data = deque(maxlen=int(frame_duration * 1e3))
+        self.color = color
         self.frame_duration = frame_duration
         self.dbscan_eps = dbscan_eps
         self.cluster_eps = cluster_eps
@@ -30,7 +33,7 @@ class RingDifferentialLocalizer:
         self.num_clusters = 0
         self.global_centroids = []
 
-    def add_point(self, point) -> Tuple[RingPoseMsg, str]:
+    def add_point(self, point) -> RingPoseMsg:
         if len(point) != 5:
             raise ValueError("Point must be of length 5")
 
@@ -42,25 +45,18 @@ class RingDifferentialLocalizer:
         clusters = self.perform_dbscan()
 
         if clusters is None:
-            return None, None
+            return None
 
         for cluster in clusters:
-            # Frame data should have at least 3 members
-            if len(self.frame_data) < 3:
-                return None, None
-
             if not self.is_cluster_in_global_centroids(cluster):
                 self.global_centroids.append(cluster)
                 print("New ring detected at: ", cluster)
+                # Maybe add update of marker here  to show new ring
+                # TODO
                 rpm = self.perform_reverse_lookup(cluster)
-                rgb = np.array([rpm.color.r, rpm.color.g, rpm.color.b])
-                print("rgb", rgb)
-                if self.is_close_to_green(rgb):
-                    return rpm, "green"
-                else:
-                    return rpm, "other"
+                return rpm
 
-        return None, None
+        return None
 
     def perform_dbscan(self) -> np.ndarray:
         data_array = np.array([point for _, point in self.frame_data])
@@ -121,12 +117,6 @@ class RingDifferentialLocalizer:
 
         return rpm
 
-    def is_close_to_green(self, rgb, threshold=50):
-        green = np.array([0.0, 255.0, 0.0])
-        distance = np.linalg.norm(np.array(rgb) - green)
-        return distance < threshold
-
-
 class RingLocalizer:
     def __init__(self):
         rospy.init_node("ring_localizer", anonymous=True)
@@ -145,7 +135,9 @@ class RingLocalizer:
         )
 
         # Setup differential localizer
-        self.differential_localizer = RingDifferentialLocalizer()
+        self.differnatial_localizers = []
+        for ring in RINGS_ON_POLYGON:
+            self.differnatial_localizers.append(RingDifferentialLocalizer(color=ring))
 
     def ring_detetected_callback(self, msg: RingPoseMsg):
         """
@@ -162,17 +154,43 @@ class RingLocalizer:
                 msg.color.b,
             ]
         )
+        rgb = np.array([msg.color.r, msg.color.g, msg.color.b])
+        color = self.color_reverse_lookup(rgb)
+        idx = RINGS_ON_POLYGON.index(color)
 
-        rpm, color = self.differential_localizer.add_point(x)
-        if rpm == None or color == None:
+        rpm = self.differnatial_localizers[idx].add_point(x)
+
+        if rpm == None:
             return
 
-        if color == "green":
+        if color == "Green":
             self.green_ring_pub.publish(rpm)
             print("Green ring detected at: ", rpm)
         else:
             self.ring_pub.publish(rpm)
-            print("Normal ring detected at:", rpm)
+            print(f"{color} ring detected at:", rpm)
+
+    def color_reverse_lookup(self, rgb):
+        base_colors = {
+            "Green": [0, 255, 0],
+            "Red": [255, 0, 0],
+            "Blue": [0, 0, 255],
+            "Black": [0, 0, 0],
+        }
+
+        def closest_color(rgb, color_dict):
+            min_distance = float("inf")
+            closest_color_name = None
+
+            for color_name, color_rgb in color_dict.items():
+                distance = np.linalg.norm(np.array(rgb) - np.array(color_rgb))
+                if distance < min_distance:
+                    min_distance = distance
+                    closest_color_name = color_name
+
+            return closest_color_name
+
+        return closest_color(rgb, base_colors)
 
 
 def main():
