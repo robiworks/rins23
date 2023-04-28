@@ -10,6 +10,8 @@
 #include <signal.h>
 #include <sound_play/sound_play.h>
 #include <stdlib.h>
+#include <task2/ColorMsg.h>
+#include <task2/RingPoseMsg.h>
 
 using namespace std;
 using namespace cv;
@@ -82,10 +84,6 @@ class Navigator {
 
       // Start monitoring navigation
       monitorNavigation();
-
-      if (point.spin) {
-        spin(360.0);
-      }
     }
 
     // Navigate through a list (vector) of points
@@ -97,18 +95,31 @@ class Navigator {
       }
     }
 
-    // Callback to handle /move_base/cancel
-    void cancelCallback(const actionlib_msgs::GoalIDConstPtr &msg) {
-      ROS_WARN("[Navigator] Received request to cancel navigation, goal ID: %s", msg->id.c_str());
-      // client->cancelGoal();
+    // Callback to handle:
+    // - /custom_msgs/nav/green_ring_detected
+    // - /custom_msgs/nav/ring_detected
+    void ringCallback(const task2::RingPoseMsgConstPtr &msg) {
+      ROS_INFO(
+          "[Navigator] Received new ring detected message: (x: %f, y: %f, z: %f)",
+          msg->pose.position.x,
+          msg->pose.position.y,
+          msg->pose.position.z
+      );
+      ROS_INFO("[Navigator] Expecting to process color callback soon");
+    }
 
-      ROS_INFO("[Navigator] Playing sound");
-      soundClient->say("New face detected!");
-      ros::Duration(3.0).sleep();
+    // Callback to handle /custom_msgs/sound/new_color
+    void colorCallback(const task2::ColorMsgConstPtr &msg) {
+      ROS_INFO(
+          "[Navigator] Received color message. Stopping and playing sound of ring color: %s",
+          msg->color.c_str()
+      );
+      goalCancelled = true;
+      client->cancelGoal();
 
-      // Continue navigation after receiving cancel
-      // The navigation goal is kept even after cancel so this is not required
-      // navigateTo(currentGoal);
+      // Say the color of the ring
+      soundClient->say(msg->color);
+      ros::Duration(1.0).sleep();
     }
 
     // Clean up (used on SIGINT)
@@ -124,7 +135,8 @@ class Navigator {
     NavigatorPoint           currentGoal;
     sound_play::SoundClient* soundClient;
     ros::Publisher*          cmdvelPublisher;
-    bool                     isKilled = false;
+    bool                     isKilled      = false;
+    bool                     goalCancelled = false;
 
     void monitorNavigation() {
       // Monitor navigation until it reaches a terminal state
@@ -167,6 +179,13 @@ class Navigator {
         // The client cancels a goal that is currently being worked on by the action server
         case actionlib::SimpleClientGoalState::PREEMPTED:
           ROS_WARN("[Navigator] Client cancelled a goal currently being worked on!");
+
+          // Check if we cancelled the goal
+          if (goalCancelled) {
+            goalCancelled = false;
+            navigateTo(currentGoal);
+          }
+
           break;
         // The action server completed the goal but encountered an error in doing so
         case actionlib::SimpleClientGoalState::ABORTED:
@@ -175,6 +194,12 @@ class Navigator {
         // The action server successfully completed the goal
         case actionlib::SimpleClientGoalState::SUCCEEDED:
           ROS_INFO("[Navigator] Successfully completed goal!");
+
+          // Spin 360 degrees if the interest points wants us to do so
+          if (currentGoal.spin) {
+            spin(360.0);
+          }
+
           break;
         // The client lost contact with the action server
         case actionlib::SimpleClientGoalState::LOST:
@@ -203,8 +228,6 @@ class Navigator {
         rate.sleep();
 
         // Process any callbacks that might have arrived while spinning
-        // TODO Ideally this should be removed from here and we should get face location
-        // TODO Then rotate accordingly, approach and greet
         ros::spinOnce();
       }
 
@@ -314,17 +337,16 @@ int main(int argc, char* argv[]) {
 
   // Vector of interest points in the map
   vector<NavigatorPoint> interestPoints {
-    {  -0.9712396264076233,  0.3039016127586365, true},
-    {    -0.81903076171875,  1.5590908527374268, true},
-    {  0.07623038440942764,   2.691239356994629, true},
-    {   2.1217899322509766,  2.7076127529144287, true},
-    {   2.5573792457580566,  1.3039171695709229, true},
-    {    1.286680817604065,  0.5794230103492737, true},
-    {    3.354393482208252, 0.27303266525268555, true},
-    {    3.716524362564087, -0.4115545153617859, true},
-    {   2.0537025928497314,  -1.007872462272644, true},
-    {0.0010448374086990952,  -1.046779990196228, true},
-    {  -0.1095728874206543, -1.1081676483154297, true},
+    {-0.9712396264076233,  0.3039016127586365, false},
+    {  -0.81903076171875,  1.5590908527374268,  true},
+    {0.07623038440942764,   2.691239356994629, false},
+    { 2.1217899322509766,  2.7076127529144287, false},
+    { 2.5573792457580566,  1.3039171695709229, false},
+    {  1.286680817604065,  0.5794230103492737,  true},
+    {  3.354393482208252, 0.27303266525268555, false},
+    {  3.716524362564087, -0.4115545153617859,  true},
+    { 2.0537025928497314,  -1.007872462272644, false},
+    {-0.1095728874206543, -1.1081676483154297,  true},
   };
 
   // Initialize publisher for robot rotation
@@ -333,12 +355,14 @@ int main(int argc, char* argv[]) {
   // Initialize Navigator
   navigator = new Navigator(&cmdvelPub);
 
-  // Initialize cancel subscriber
-  ros::Subscriber cancelSub =
-      nh.subscribe("/move_base/cancel", 1, &Navigator::cancelCallback, navigator);
+  // Initialize ring detection subscribers
+  ros::Subscriber greenRingSub =
+      nh.subscribe("/custom_msgs/nav/green_ring_detected", 1, &Navigator::ringCallback, navigator);
+  ros::Subscriber ringSub =
+      nh.subscribe("/custom_msgs/nav/ring_detected", 1, &Navigator::ringCallback, navigator);
+  ros::Subscriber colorSub =
+      nh.subscribe("/custom_msgs/sound/new_color", 1, &Navigator::colorCallback, navigator);
 
   // Navigate through interest points
-  //navigator->navigateList(interestPoints);
-  // spin
-  ros::spin();
+  navigator->navigateList(interestPoints);
 }
