@@ -85,8 +85,6 @@ void getDepths(
       return;
 
     float distance = accumulator / count;
-    if (distance < 0.1 || distance > 2)
-      return;
 
     pose.color.r /= count;
     pose.color.g /= count;
@@ -102,7 +100,6 @@ void getDepths(
 
     double angle_to_target = atan2(depth_f->image.cols / 2 - circles[i][0], kf);
 
-    
     float x_target = distance * cos(angle_to_target);
     float y_target = distance * sin(angle_to_target);
 
@@ -143,7 +140,7 @@ void getDepths(
     marker_pub.publish(marker_array);
 
     // Print point stamped
-    ROS_INFO("Point: %f, %f, %f", point.point.x, point.point.y, point.point.z);
+    // ROS_INFO("Point: %f, %f, %f", point.point.x, point.point.y, point.point.z);
 
     geometry_msgs::Pose pose_msg;
 
@@ -199,7 +196,7 @@ std::vector<cv::Vec4f> detectCircles(cv::Mat input_img, cv::Mat output_img) {
     int center_value = input_img.at<uchar>(center);
 
     if (center_value > centerThreshold) {
-      ROS_INFO("Circle %d is not hollow", (int) i);
+      // ROS_INFO("Circle %d is not hollow", (int) i);
       continue;
     }
 

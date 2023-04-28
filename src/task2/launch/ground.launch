@@ -8,14 +8,4 @@
         <param name="cam_info" type="string" value="arm"/>
         <param name="debug" type="bool" value="true"/>
     </node>
-
-    <!-- Normal Camera -->
-    <node pkg="task2" type="circle" name="circle_body" output="screen">
-        <param name="depth" type="string" value="/camera/depth/image_raw"/>
-        <param name="rgb" type="string" value="/camera/rgb/image_raw"/>
-        <param name="cam_info" type="string" value="normal"/>
-        <param name="debug" type="bool" value="false"/>
-    </node>
-
-
 </launch>
