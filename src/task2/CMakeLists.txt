@@ -53,6 +53,7 @@ link_libraries(${Boost_LIBRARIES} ${catkin_LIBRARIES} ${PCL_LIBRARIES})
 add_message_files(
   FILES
   RingPoseMsg.msg
+  ColorMsg.msg
 )
 
 ## Generate message files

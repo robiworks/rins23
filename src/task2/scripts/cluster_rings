@@ -12,13 +12,34 @@ from os.path import dirname, join
 import os
 import datetime
 from sklearn.cluster import DBSCAN
-from task2.msg import RingPoseMsg
+from task2.msg import RingPoseMsg, ColorMsg
 from collections import deque
 import time
-from typing import Tuple
+from typing import List
+from dataclasses import dataclass
 
 
 RINGS_ON_POLYGON = ["Green", "Red", "Blue", "Black"]
+
+
+@dataclass
+class RingColor:
+    color: str
+    ring: RingPoseMsg
+
+
+class RingHolder:
+    def __init__(self):
+        self.rings: List[RingColor] = []
+
+    def update_ring(self, ring: RingPoseMsg) -> bool:
+        for rring in self.rings:
+            if rring.color == ring.color:
+                rring.ring = ring
+                return False
+        self.rings.append(RingColor(ring.color, ring))
+        return True
+
 
 class RingDifferentialLocalizer:
     def __init__(
@@ -117,6 +138,7 @@ class RingDifferentialLocalizer:
 
         return rpm
 
+
 class RingLocalizer:
     def __init__(self):
         rospy.init_node("ring_localizer", anonymous=True)
@@ -129,6 +151,10 @@ class RingLocalizer:
             "/custom_msgs/nav/ring_detected", RingPoseMsg, queue_size=10
         )
 
+        self.color_pub = rospy.Publisher(
+            "/custom_msgs/sound/new_color", ColorMsg, queue_size=10
+        )
+
         # Setup subscribers
         self.ring_detected_sub = rospy.Subscriber(
             "/custom_msgs/ring_detection", RingPoseMsg, self.ring_detetected_callback
@@ -138,6 +164,9 @@ class RingLocalizer:
         self.differnatial_localizers = []
         for ring in RINGS_ON_POLYGON:
             self.differnatial_localizers.append(RingDifferentialLocalizer(color=ring))
+
+        # Setup ring holder
+        self.ring_holder = RingHolder()
 
     def ring_detetected_callback(self, msg: RingPoseMsg):
         """
@@ -163,11 +192,15 @@ class RingLocalizer:
         if rpm == None:
             return
 
+        is_new = self.ring_holder.update_ring(rpm)
+
         if color == "Green":
-            self.green_ring_pub.publish(rpm)
+            if is_new:
+                self.green_ring_pub.publish(rpm)
             print("Green ring detected at: ", rpm)
         else:
-            self.ring_pub.publish(rpm)
+            if is_new:
+                self.color_pub.publish(ColorMsg(color=color))
             print(f"{color} ring detected at:", rpm)
 
     def color_reverse_lookup(self, rgb):
