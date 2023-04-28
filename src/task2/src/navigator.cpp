@@ -114,8 +114,8 @@ class Navigator {
           "[Navigator] Received color message. Stopping and playing sound of ring color: %s",
           msg->color.c_str()
       );
-      client->cancelGoal();
       goalCancelled = true;
+      client->cancelGoal();
 
       // Say the color of the ring
       soundClient->say(msg->color);
