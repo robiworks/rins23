@@ -13,37 +13,62 @@ import os
 import datetime
 from sklearn.cluster import DBSCAN
 from task2.msg import RingPoseMsg
+from collections import deque
+import time
+from typing import Tuple
 
 
 class RingDifferentialLocalizer:
-    def __init__(self, eps=0.16, min_samples=2):
-        self.data = []
-        self.eps = eps
+    def __init__(
+        self, dbscan_eps=0.3, cluster_eps=0.3, min_samples=2, frame_duration=5
+    ):
+        self.frame_data = deque(maxlen=int(frame_duration * 1e3))
+        self.frame_duration = frame_duration
+        self.dbscan_eps = dbscan_eps
+        self.cluster_eps = cluster_eps
         self.min_samples = min_samples
         self.num_clusters = 0
+        self.global_centroids = []
 
-    def add_point(self, point):
+    def add_point(self, point) -> Tuple[RingPoseMsg, str]:
         if len(point) != 5:
             raise ValueError("The input point must be a 5D vector")
-        self.data.append(point)
+
+        timestamp = time.time()
+        self.frame_data.append((timestamp, point))
+        # Cleanup old data
+        self.trim_frame_data()
+
         clusters = self.perform_dbscan()
+
+        print("Clusters: ", clusters)
+
         if clusters is None:
-            return
-        if len(clusters) < self.num_clusters:
-            print("Well something is not OK with clustering!")
-        elif len(clusters) > self.num_clusters:
-            print("NEW Ring detected!")
-            # Do reverse lookup to find the new ring
-            # TODO -> was already done :facepalm:
-        self.num_clusters = len(clusters)
-        return
+            return None, None
+
+        for cluster in clusters:
+            # Frame data should have at least 5 members
+            if len(self.frame_data) < 5:
+                raise ValueError("Frame data must have at least 5 members")
+
+            if not self.is_cluster_in_global_centroids(cluster):
+                self.global_centroids.append(cluster)
+                print("New ring detected at: ", cluster)
+                rpm = self.perform_reverse_lookup(cluster)
+                rgb = np.array([rpm.color.r, rpm.color.g, rpm.color.b])
+                if self.is_close_to_green(rgb):
+                    return rpm, "green"
+                else:
+                    return rpm, "other"
+
+        return None, None
 
     def perform_dbscan(self) -> np.ndarray:
-        data_array = np.array(self.data)
+        data_array = np.array([point for _, point in self.frame_data])
         data_array = data_array[:, 0:2]  # Only use the x and y coordinates
 
         # Perform DBSCAN clustering
-        dbscan = DBSCAN(eps=self.eps, min_samples=self.min_samples)
+        dbscan = DBSCAN(eps=self.dbscan_eps, min_samples=self.min_samples)
         dbscan.fit(data_array)
 
         centroids = []
@@ -59,16 +84,59 @@ class RingDifferentialLocalizer:
 
         return np.array(centroids)
 
+    def is_cluster_in_global_centroids(self, cluster):
+        cluster_threshold = self.cluster_eps
+        for global_centroid in self.global_centroids:
+            distance = np.linalg.norm(global_centroid - cluster)
+            if distance < cluster_threshold:
+                return True
+        return False
+
+    def trim_frame_data(self):
+        current_time = time.time()
+        while (
+            self.frame_data
+            and current_time - self.frame_data[0][0] > self.frame_duration
+        ):
+            self.frame_data.popleft()
+
+    def perform_reverse_lookup(self, centroid) -> RingPoseMsg:
+        # Find the closest point in frame data to the centroid
+        similarities = []
+        for v in self.frame_data:
+            x = np.array(v[1][:2])
+            sim = np.linalg.norm(x - centroid)
+            similarities.append(sim)
+
+        # find the smallest similraity
+        min_sim = min(similarities)
+        min_sim_idx = similarities.index(min_sim)
+        ring_pose = self.frame_data[min_sim_idx]
+
+        rpm = RingPoseMsg()
+        rpm.pose.position.x = ring_pose[0]
+        rpm.pose.position.z = ring_pose[1]
+        rpm.color.r = ring_pose[2]
+        rpm.color.g = ring_pose[3]
+        rpm.color.b = ring_pose[4]
+
+        return rpm
+
+    def is_close_to_green(rgb, threshold=50):
+        green = np.array([0, 255, 0])
+        distance = np.linalg.norm(np.array(rgb) - green)
+        return distance < threshold
+
 
 class RingLocalizer:
     def __init__(self):
         rospy.init_node("ring_localizer", anonymous=True)
 
         # Setup publishers
-        self.ring_pose_pub = rospy.Publisher(
+        self.green_ring_pub = rospy.Publisher(
             "/custom_msgs/nav/green_ring_detected", RingPoseMsg, queue_size=10
         )
-        self.ring_pose_pub = rospy.Publisher(
+        self.ring_pub = rospy.Publisher(
             "/custom_msgs/nav/ring_detected", RingPoseMsg, queue_size=10
         )
 
@@ -89,14 +157,23 @@ class RingLocalizer:
         x = np.array(
             [
                 msg.pose.position.x,
-                msg.pose.position.y,
+                msg.pose.position.z,  # for some reason
                 msg.color.r,
                 msg.color.g,
                 msg.color.b,
             ]
         )
 
-        self.differential_localizer.add_point(x)
+        rpm, color = self.differential_localizer.add_point(x)
+        if rpm == None or color == None:
+            return
+
+        if color == "green":
+            self.green_ring_pub.publish(rpm)
+            print("Green ring detected at: ", rpm)
+        else:
+            self.ring_pub.publish(rpm)
+            print("Normal ring detected at:", rpm)
 
 
 def main():

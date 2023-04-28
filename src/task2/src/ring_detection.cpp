@@ -80,6 +80,8 @@ void getDepths(
       return;
 
     float distance = accumulator / count;
+    if (distance < 0.1 || distance > 2)
+      return;
 
     pose.color.r /= count;
     pose.color.g /= count;
@@ -95,6 +97,7 @@ void getDepths(
 
     double angle_to_target = atan2(depth_f->image.cols / 2 - circles[i][0], kf);
 
+    
     float x_target = distance * cos(angle_to_target);
     float y_target = distance * sin(angle_to_target);
 
