@@ -228,8 +228,6 @@ class Navigator {
         rate.sleep();
 
         // Process any callbacks that might have arrived while spinning
-        // TODO Ideally this should be removed from here and we should get face location
-        // TODO Then rotate accordingly, approach and greet
         ros::spinOnce();
       }
 
