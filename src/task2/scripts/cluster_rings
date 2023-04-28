@@ -1,0 +1,244 @@
+#!/usr/bin/python3
+
+import sys
+import rospy
+import cv2
+import numpy as np
+import tf2_geometry_msgs
+import tf2_ros
+import time
+
+from os.path import dirname, join
+import os
+import datetime
+from sklearn.cluster import DBSCAN
+from task2.msg import RingPoseMsg, ColorMsg
+from collections import deque
+import time
+from typing import List
+from dataclasses import dataclass
+
+
+RINGS_ON_POLYGON = ["Green", "Red", "Blue", "Black"]
+
+
+@dataclass
+class RingColor:
+    color: str
+    ring: RingPoseMsg
+
+
+class RingHolder:
+    def __init__(self):
+        self.rings: List[RingColor] = []
+
+    def update_ring(self, ring: RingPoseMsg) -> bool:
+        for rring in self.rings:
+            if rring.color == ring.color:
+                rring.ring = ring
+                return False
+        self.rings.append(RingColor(ring.color, ring))
+        return True
+
+
+class RingDifferentialLocalizer:
+    def __init__(
+        self, color, dbscan_eps=0.5, cluster_eps=0.5, min_samples=2, frame_duration=5
+    ):
+        self.frame_data = deque(maxlen=int(frame_duration * 1e3))
+        self.color = color
+        self.frame_duration = frame_duration
+        self.dbscan_eps = dbscan_eps
+        self.cluster_eps = cluster_eps
+        self.min_samples = min_samples
+        self.num_clusters = 0
+        self.global_centroids = []
+
+    def add_point(self, point) -> RingPoseMsg:
+        if len(point) != 5:
+            raise ValueError("Point must be of length 5")
+
+        timestamp = time.time()
+        self.frame_data.append((timestamp, point))
+        # Cleanup old data
+        self.trim_frame_data()
+
+        clusters = self.perform_dbscan()
+
+        if clusters is None:
+            return None
+
+        for cluster in clusters:
+            if not self.is_cluster_in_global_centroids(cluster):
+                self.global_centroids.append(cluster)
+                print("New ring detected at: ", cluster)
+                # Maybe add update of marker here  to show new ring
+                # TODO
+                rpm = self.perform_reverse_lookup(cluster)
+                return rpm
+
+        return None
+
+    def perform_dbscan(self) -> np.ndarray:
+        data_array = np.array([point for _, point in self.frame_data])
+        data_array = data_array[:, 0:2]  # Only use the x and y coordinates
+
+        # Perform DBSCAN clustering
+        dbscan = DBSCAN(eps=self.dbscan_eps, min_samples=self.min_samples)
+        dbscan.fit(data_array)
+
+        centroids = []
+        for cluster_label in set(dbscan.labels_):
+            if cluster_label == -1:  # This is the label for noise points
+                continue
+            cluster_points = data_array[dbscan.labels_ == cluster_label]
+            centroid = np.mean(cluster_points, axis=0)
+            centroids.append(centroid)
+
+        if len(centroids) == 0:
+            return None
+
+        return np.array(centroids)
+
+    def is_cluster_in_global_centroids(self, cluster):
+        cluster_threshold = self.cluster_eps
+        for global_centroid in self.global_centroids:
+            distance = np.linalg.norm(global_centroid - cluster)
+            if distance < cluster_threshold:
+                return True
+        return False
+
+    def trim_frame_data(self):
+        current_time = time.time()
+        while (
+            self.frame_data
+            and current_time - self.frame_data[0][0] > self.frame_duration
+        ):
+            self.frame_data.popleft()
+
+    def perform_reverse_lookup(self, centroid) -> RingPoseMsg:
+        # Find the closest point in frame data to the centroid
+        similarities = []
+        for v in self.frame_data:
+            x = np.array(v[1][:2])
+            sim = np.linalg.norm(x - centroid)
+            similarities.append(sim)
+
+        # find the smallest similraity
+        min_sim = min(similarities)
+        min_sim_idx = similarities.index(min_sim)
+        ring_pose = self.frame_data[min_sim_idx][1]
+
+        rpm = RingPoseMsg()
+        rpm.pose.position.x = ring_pose[0]
+        rpm.pose.position.z = ring_pose[1]
+        rpm.color.r = ring_pose[2]
+        rpm.color.g = ring_pose[3]
+        rpm.color.b = ring_pose[4]
+
+        return rpm
+
+
+class RingLocalizer:
+    def __init__(self):
+        rospy.init_node("ring_localizer", anonymous=True)
+
+        # Setup publishers
+        self.green_ring_pub = rospy.Publisher(
+            "/custom_msgs/nav/green_ring_detected", RingPoseMsg, queue_size=10
+        )
+        self.ring_pub = rospy.Publisher(
+            "/custom_msgs/nav/ring_detected", RingPoseMsg, queue_size=10
+        )
+
+        self.color_pub = rospy.Publisher(
+            "/custom_msgs/sound/new_color", ColorMsg, queue_size=10
+        )
+
+        # Setup subscribers
+        self.ring_detected_sub = rospy.Subscriber(
+            "/custom_msgs/ring_detection", RingPoseMsg, self.ring_detetected_callback
+        )
+
+        # Setup differential localizer
+        self.differnatial_localizers = []
+        for ring in RINGS_ON_POLYGON:
+            self.differnatial_localizers.append(RingDifferentialLocalizer(color=ring))
+
+        # Setup ring holder
+        self.ring_holder = RingHolder()
+
+    def ring_detetected_callback(self, msg: RingPoseMsg):
+        """
+        Callback function for the ring detected topic.
+        :param msg: RingPoseMsg
+        :return: None
+        """
+        x = np.array(
+            [
+                msg.pose.position.x,
+                msg.pose.position.z,  # for some reason
+                msg.color.r,
+                msg.color.g,
+                msg.color.b,
+            ]
+        )
+        rgb = np.array([msg.color.r, msg.color.g, msg.color.b])
+        color = self.color_reverse_lookup(rgb)
+        idx = RINGS_ON_POLYGON.index(color)
+
+        rpm = self.differnatial_localizers[idx].add_point(x)
+
+        if rpm == None:
+            return
+
+        is_new = self.ring_holder.update_ring(rpm)
+
+        if color == "Green":
+            if is_new:
+                self.green_ring_pub.publish(rpm)
+                self.color_pub.publish(ColorMsg(color=color))
+            print("Green ring detected at: ", rpm)
+        else:
+            if is_new:
+                self.ring_pub.publish(rpm)
+                self.color_pub.publish(ColorMsg(color=color))
+            print(f"{color} ring detected at:", rpm)
+
+    def color_reverse_lookup(self, rgb):
+        base_colors = {
+            "Green": [0, 255, 0],
+            "Red": [255, 0, 0],
+            "Blue": [0, 0, 255],
+            "Black": [0, 0, 0],
+        }
+
+        def closest_color(rgb, color_dict):
+            min_distance = float("inf")
+            closest_color_name = None
+
+            for color_name, color_rgb in color_dict.items():
+                distance = np.linalg.norm(np.array(rgb) - np.array(color_rgb))
+                if distance < min_distance:
+                    min_distance = distance
+                    closest_color_name = color_name
+
+            return closest_color_name
+
+        return closest_color(rgb, base_colors)
+
+
+def main():
+    ring_localizer = RingLocalizer()
+    print("Ring localizer node started")
+
+    rate = rospy.Rate(1)
+    while not rospy.is_shutdown():
+        rate.sleep()
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except rospy.ROSInterruptException:
+        pass
