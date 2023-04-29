@@ -273,7 +273,7 @@ void green_callback(task2::RingPoseMsg pose){
     arm_pub.publish(trajectory);
   
     //wait 2 sec
-    ros::Duration(2.0).sleep();
+    ros::Duration(5.0).sleep();
   search = true;
 }
 
@@ -308,11 +308,6 @@ int main(int argc, char** argv) {
   ROS_INFO("RGB topic: %s", rgb_topic.c_str());
   ROS_INFO("Debug: %s", debug ? "true" : "false");
 
-  // Create a ROS subscriber for rgb and depth images
-//   rgb_sub(nh, rgb_topic, 1);
-//   Subscriber<Image> depth_sub(nh, depth_topic, 1);
-  // Create a marker publisher
-  
     marker_pub = nh.advertise<visualization_msgs::MarkerArray>("ground_ring_marker", 10000);
 
     ros::Subscriber green_sub = nh.subscribe("/custom_msgs/nav/green_ring_detected", 1, &green_callback);
