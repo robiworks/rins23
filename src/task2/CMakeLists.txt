@@ -95,3 +95,7 @@ add_executable(ground src/ground_ring.cpp)
 add_dependencies(ground ${catkin_EXPORTED_TARGETS})
 
 target_link_libraries(circle ${catkin_LIBRARIES} ${OpenCV_INCLUDE_DIRS})
+
+add_executable(task2_cylinder src/cylinder.cpp)
+target_link_libraries(task2_cylinder ${catkin_LIBRARIES} ${message_runtime_LIBRARIES} ${PCL_LIBRARIES})
+
