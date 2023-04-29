@@ -1,0 +1,12 @@
+<launch>
+    <!-- Arm Camera -->
+   
+   <!-- Uncomment to use  -->
+    <node pkg="task2" type="ground" name="circle_arm" output="screen">
+        <param name="depth" type="string" value="/arm_camera/depth/image_raw"/>
+        <param name="rgb" type="string" value="/arm_camera/rgb/image_raw"/>
+        <param name="cam_info" type="string" value="arm"/>
+        <param name="debug" type="bool" value="false"/>
+    </node>
+
+</launch>
