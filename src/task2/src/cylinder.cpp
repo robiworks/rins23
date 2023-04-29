@@ -25,7 +25,7 @@ ros::Publisher pubm;
 
 tf2_ros::Buffer tf2_buffer;
 
-typedef pcl::PointXYZ PointT;
+typedef pcl::PointXYZRGB PointT;
 
 void cloud_cb(const pcl::PCLPointCloud2ConstPtr &cloud_blob) {
   // All the objects needed
@@ -101,6 +101,12 @@ void cloud_cb(const pcl::PCLPointCloud2ConstPtr &cloud_blob) {
   extract_normals.setIndices(inliers_plane);
   extract_normals.filter(*cloud_normals2);
 
+  // Check if there are any points left
+  if (cloud_filtered2->points.empty() || cloud_normals2->points.empty()) {
+    ROS_WARN("Could not find any points remaining after planar extraction.");
+    return;
+  }
+
   // Create the segmentation object for cylinder segmentation and set all the parameters
   seg.setOptimizeCoefficients(true);
   seg.setModelType(pcl::SACMODEL_CYLINDER);
@@ -108,7 +114,7 @@ void cloud_cb(const pcl::PCLPointCloud2ConstPtr &cloud_blob) {
   seg.setNormalDistanceWeight(0.1);
   seg.setMaxIterations(10000);
   seg.setDistanceThreshold(0.05);
-  seg.setRadiusLimits(0.06, 0.2);
+  seg.setRadiusLimits(0.1, 0.3);
   seg.setInputCloud(cloud_filtered2);
   seg.setInputNormals(cloud_normals2);
 
@@ -121,6 +127,7 @@ void cloud_cb(const pcl::PCLPointCloud2ConstPtr &cloud_blob) {
   extract.setNegative(false);
   pcl::PointCloud<PointT>::Ptr cloud_cylinder(new pcl::PointCloud<PointT>());
   extract.filter(*cloud_cylinder);
+
   if (cloud_cylinder->points.empty())
     std::cerr << "Can't find the cylindrical component." << std::endl;
   else {
@@ -143,6 +150,21 @@ void cloud_cb(const pcl::PCLPointCloud2ConstPtr &cloud_blob) {
     point_camera.point.y = centroid[1];
     point_camera.point.z = centroid[2];
 
+    int r_total = 0, g_total = 0, b_total = 0;
+    int num_points = cloud_cylinder->points.size();
+    for (const auto &point : cloud_cylinder->points) {
+      r_total += point.r;
+      g_total += point.g;
+      b_total += point.b;
+    }
+
+    int r_avg = r_total / num_points;
+    int g_avg = g_total / num_points;
+    int b_avg = b_total / num_points;
+
+    std::cout << "Average color of the cylinder (R, G, B): (" << r_avg << ", " << g_avg << ", "
+              << b_avg << ")" << std::endl;
+
     try {
       time_test = ros::Time::now();
       tss       = tf2_buffer.lookupTransform("map", "camera_rgb_optical_frame", time_rec);
@@ -153,40 +175,6 @@ void cloud_cb(const pcl::PCLPointCloud2ConstPtr &cloud_blob) {
 
     std::cerr << "point_map: " << point_map.point.x << " " << point_map.point.y << " "
               << point_map.point.z << std::endl;
-
-    marker.header.frame_id = "map";
-    marker.header.stamp    = ros::Time::now();
-
-    marker.ns = "cylinder";
-    marker.id = 0;
-
-    marker.type   = visualization_msgs::Marker::CYLINDER;
-    marker.action = visualization_msgs::Marker::ADD;
-
-    marker.pose.position.x    = point_map.point.x;
-    marker.pose.position.y    = point_map.point.y;
-    marker.pose.position.z    = point_map.point.z;
-    marker.pose.orientation.x = 0.0;
-    marker.pose.orientation.y = 0.0;
-    marker.pose.orientation.z = 0.0;
-    marker.pose.orientation.w = 1.0;
-
-    marker.scale.x = 0.1;
-    marker.scale.y = 0.1;
-    marker.scale.z = 0.1;
-
-    marker.color.r = 0.0f;
-    marker.color.g = 1.0f;
-    marker.color.b = 0.0f;
-    marker.color.a = 1.0f;
-
-    marker.lifetime = ros::Duration();
-
-    pubm.publish(marker);
-
-    pcl::PCLPointCloud2 outcloud_cylinder;
-    pcl::toPCLPointCloud2(*cloud_cylinder, outcloud_cylinder);
-    puby.publish(outcloud_cylinder);
   }
 }
 
