@@ -19,7 +19,7 @@ from typing import List
 from dataclasses import dataclass
 
 
-RINGS_ON_POLYGON = ["Green", "Red", "Blue", "Black"]
+RINGS_ON_POLYGON = ["Green", "Red", "Blue", "Black", "Brown"]
 
 
 @dataclass
@@ -212,6 +212,7 @@ class RingLocalizer:
             "Red": [255, 0, 0],
             "Blue": [0, 0, 255],
             "Black": [0, 0, 0],
+            "Brown": [175, 50, 0],
         }
 
         def closest_color(rgb, color_dict):
