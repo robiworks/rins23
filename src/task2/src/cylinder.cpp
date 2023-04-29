@@ -27,9 +27,13 @@ class CylinderDetection {
       pub_ = nh_.advertise<geometry_msgs::PointStamped>("cylinder_position", 1);
     }
 
-    void cloudCallback(const pcl::PointCloud<PointT>::ConstPtr &cloud) {
-      ros::Time time_rec;
-      time_rec = ros::Time::now() - ros::Duration(0.5);
+    void cloudCallback(const sensor_msgs::PointCloud2::ConstPtr& cloud_msg) {
+        pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
+        pcl::fromROSMsg(*cloud_msg, *cloud);
+
+      // get the timestamp from the point cloud
+      ros::Time time_rec = cloud_msg->header.stamp;
+
       // All the objects needed
       pcl::PassThrough<PointT>                             pass;
       pcl::NormalEstimation<PointT, pcl::Normal>           ne;
@@ -81,12 +85,6 @@ class CylinderDetection {
       extract.setIndices(inliers_plane);
       extract.setNegative(false);
 
-      // Write the planar inliers to disk
-      pcl::PointCloud<PointT>::Ptr cloud_plane(new pcl::PointCloud<PointT>());
-
-      extract.filter(*cloud_plane);
-      //ROS_INFO_STREAM("PointCloud representing the planar component: " << cloud_plane->size () << " data points.");
-
       // Remove the planar inliers, extract the rest
       extract.setNegative(true);
       extract.filter(*cloud_filtered2);
@@ -105,17 +103,16 @@ class CylinderDetection {
       seg.setOptimizeCoefficients(true);
       seg.setModelType(pcl::SACMODEL_CYLINDER);
       seg.setMethodType(pcl::SAC_RANSAC);
-      seg.setNormalDistanceWeight(0.01);
+      seg.setNormalDistanceWeight(0.1);
       seg.setMaxIterations(10000);
       seg.setDistanceThreshold(0.05);
-      seg.setRadiusLimits(0.2, 0.7);
+      seg.setRadiusLimits(0.06, 0.2);
       seg.setInputCloud(cloud_filtered2);
       seg.setInputNormals(cloud_normals2);
 
       // Obtain the cylinder inliers and coefficients
       seg.segment(*inliers_cylinder, *coefficients_cylinder);
-      //ROS_INFO_STREAM("Cylinder coefficients: " << *coefficients_cylinder);
-      //
+
       extract.setInputCloud(cloud_filtered2);
       extract.setIndices(inliers_cylinder);
       extract.setNegative(false);
@@ -144,7 +141,7 @@ class CylinderDetection {
           geometry_msgs::TransformStamped tss =
               tf2_buffer.lookupTransform("map", "camera_rgb_optical_frame", time_rec);
           tf2::doTransform(point_camera, point_map, tss);
-        } catch (tf2::TransformException &ex) {
+        } catch (tf2::ransformException &ex) {
           ROS_WARN("Transform warning: %s\n", ex.what());
         }
 
