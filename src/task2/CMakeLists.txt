@@ -91,7 +91,4 @@ target_link_libraries(task2_navigator ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} ${
 add_executable(circle src/ring_detection.cpp)
 add_dependencies(circle ${catkin_EXPORTED_TARGETS})
 
-add_executable(ground src/ground_ring.cpp)
-add_dependencies(ground ${catkin_EXPORTED_TARGETS})
-
 target_link_libraries(circle ${catkin_LIBRARIES} ${OpenCV_INCLUDE_DIRS})
