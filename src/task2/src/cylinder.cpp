@@ -10,15 +10,20 @@
 #include <pcl/segmentation/sac_segmentation.h>
 #include <pcl_ros/point_cloud.h>
 #include <tf/transform_listener.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+#include <tf2_ros/transform_listener.h>
 #include <geometry_msgs/PointStamped.h>
-
+#include <pcl_ros/transforms.h>
+#include <visualization_msgs/Marker.h>
+#include <pcl/common/centroid.h>
+#include <pcl_conversions/pcl_conversions.h>
 
 typedef pcl::PointXYZ PointT;
 
 class CylinderDetection
 {
 public:
-  CylinderDetection() : nh_("~")
+  CylinderDetection() : nh_("~"), tf2_listener(tf2_buffer)
   {
     sub_ = nh_.subscribe("/camera/depth/points", 1, &CylinderDetection::cloudCallback, this);
     pub_ = nh_.advertise<geometry_msgs::PointStamped>("cylinder_position", 1);
@@ -60,6 +65,7 @@ public:
     seg.setModelType (pcl::SACMODEL_NORMAL_PLANE);
     seg.setNormalDistanceWeight (0.1);
     seg.setMethodType (pcl::SAC_RANSAC);
+#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
     seg.setMaxIterations (100);
     seg.setDistanceThreshold (0.03);
     seg.setInputCloud (cloud_filtered);
@@ -118,15 +124,75 @@ public:
     {
       ROS_WARN("No cylinder found");
       return;
-    
+    } else {
+         // Get the centroid of the cylindrical component
+    pcl::compute3DCentroid(*cloud_cylinder, centroid);
+
+    // Transform the centroid from the camera frame to the map frame
+    geometry_msgs::PointStamped point_camera, point_map;
+    point_camera.header.frame_id = "camera_rgb_optical_frame";
+    point_camera.header.stamp = ros::Time::now();
+    point_map.header.frame_id = "map";
+    point_map.header.stamp = ros::Time::now();
+
+    point_camera.point.x = centroid[0];
+    point_camera.point.y = centroid[1];
+    point_camera.point.z = centroid[2];
+
+    try
+    {
+        ros::Time time_test = ros::Time::now();
+        geometry_msgs::TransformStamped tss = tf2_buffer.lookupTransform("map", "camera_rgb_optical_frame",  point_camera.header.stamp);
+        tf2::doTransform(point_camera, point_map, tss);
+    }
+    catch (tf2::TransformException &ex)
+    {
+        ROS_WARN("Transform warning: %s\n", ex.what());
+    }
+
+    // Create a marker for visualization
+    visualization_msgs::Marker marker;
+    marker.header.frame_id = "map";
+    marker.header.stamp = ros::Time::now();
+    marker.ns = "cylinder";
+    marker.id = 0;
+    marker.type = visualization_msgs::Marker::CYLINDER;
+    marker.action = visualization_msgs::Marker::ADD;
+
+    ROS_ERROR("Centroid: %f, %f, %f", point_map.point.x, point_map.point.y, point_map.point.z);
+
+    marker.pose.position.x = point_map.point.x;
+    marker.pose.position.y = point_map.point.y;
+    marker.pose.position.z = point_map.point.z;
+    marker.pose.orientation.x = 0.0;
+    marker.pose.orientation.y = 0.0;
+    marker.pose.orientation.z = 0.0;
+    marker.pose.orientation.w = 1.0;
+
+    marker.scale.x = 0.1;
+    marker.scale.y = 0.1;
+    marker.scale.z = 0.1;
+
+    marker.color.r = 0.0f;
+    marker.color.g = 1.0f;
+    marker.color.b = 0.0f;
+    marker.color.a = 1.0f;
+
+    marker.lifetime = ros::Duration();
+
     }
   }
 
 private:
   ros::NodeHandle nh_;
-    ros::Subscriber sub_;
-    ros::Publisher pub_;
-    pcl::PCDWriter writer;
+  ros::Subscriber sub_;
+  ros::Publisher pub_;
+  ros::Publisher pubm;
+  ros::Publisher puby;
+  pcl::PCDWriter writer;
+  tf2_ros::Buffer tf2_buffer;
+  tf2_ros::TransformListener tf2_listener;
+  Eigen::Vector4f centroid;
 };
 
 
