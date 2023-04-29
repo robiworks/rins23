@@ -17,12 +17,153 @@ using namespace message_filters;
 using namespace sensor_msgs;
 using namespace cv_bridge;
 
+typedef sync_policies::ApproximateTime<Image, Image> ApproxSync;
+
+visualization_msgs::MarkerArray    marker_array;
+
+
 bool debug;
 bool search = false;
 
 ros::Publisher marker_pub;
 ros::Publisher ground_ring_pub;
 ros::Publisher arm_pub;
+
+void getDepths(
+    std::vector<cv::Vec4f>            circles,
+    const cv_bridge::CvImageConstPtr &depth_f,
+    const cv_bridge::CvImageConstPtr &rgb_image,
+    cv::Mat                           output,
+    std_msgs::Header                  depth_header
+) {
+  // ROS_INFO("Getting depths");
+
+  if (debug) {
+    cv::imshow("rgb", output);
+    cv::waitKey(1);
+  }
+
+  // Get the depth image
+  for (size_t i = 0; i < circles.size(); i++) {
+    int minX = std::max(cvRound(circles[i][0] - circles[i][2]), 0);
+    int maxX = std::min(cvRound(circles[i][0] + circles[i][2]), depth_f->image.cols);
+    int minY = std::max(cvRound(circles[i][1] - circles[i][2]), 0);
+    int maxY = std::min(cvRound(circles[i][1] + circles[i][2]), depth_f->image.rows);
+
+    task2::RingPoseMsg pose;
+
+    pose.color.r = 0;
+    pose.color.g = 0;
+    pose.color.b = 0;
+
+    // Get the average depth
+
+    cv::rectangle(output, cv::Point(minX, minY), cv::Point(maxX, maxY), cv::Scalar(122, 255, 0), 1);
+
+    float accumulator = 0;
+    int   count       = 0;
+
+    for (int y = minY; y < maxY; y++) {
+      for (int x = minX; x < maxX; x++) {
+        float depth = depth_f->image.at<float>(y, x);
+
+        if (depth > 0.1) {
+          float dist = sqrt(pow(x - circles[i][0], 2) + pow(y - circles[i][1], 2));
+
+          if (dist <= circles[i][2]) {
+            accumulator += depth;
+            count++;
+
+            cv::Vec3b rgb_vals = rgb_image->image.at<cv::Vec3b>(y, x);
+
+            pose.color.r += rgb_vals[2];
+            pose.color.g += rgb_vals[1];
+            pose.color.b += rgb_vals[0];
+
+            output.at<cv::Vec3b>(y, x) = output.at<cv::Vec3b>(y, x) + cv::Vec3b(100, 100, 0);
+          }
+        }
+      }
+    }
+
+    if (count < 20)
+      return;
+
+    float distance = accumulator / count;
+
+    pose.color.r /= count;
+    pose.color.g /= count;
+    pose.color.b /= count;
+
+    // Debug the color
+    if (debug) {
+      ROS_INFO("Color: %f, %f, %f", pose.color.r, pose.color.g, pose.color.b);
+    }
+
+    // Calculate the distance with angles and the depth
+    float kf = 554;
+
+    double angle_to_target = atan2(depth_f->image.cols / 2 - circles[i][0], kf);
+
+    float x_target = distance * cos(angle_to_target);
+    float y_target = distance * sin(angle_to_target);
+
+    geometry_msgs::PointStamped point;
+
+    point.header.frame_id = "camera_rgb_optical_frame";
+    point.header.stamp    = depth_header.stamp;
+    point.point.x         = -y_target;
+    point.point.y         = 0;
+    point.point.z         = x_target; //Try switching .y and .z
+
+    // Make a marker for the point
+    visualization_msgs::Marker marker;
+    marker.header.frame_id    = "camera_rgb_optical_frame";
+    marker.header.stamp       = depth_header.stamp;
+    marker.ns                 = "points_and_lines";
+    marker.id                 = rand();
+    marker.type               = visualization_msgs::Marker::SPHERE;
+    marker.action             = visualization_msgs::Marker::ADD;
+    marker.pose.position.x    = point.point.x;
+    marker.pose.position.y    = point.point.y;    
+    marker.pose.position.z    = point.point.z;
+    marker.pose.orientation.x = 0.0;
+    marker.pose.orientation.y = 0.0;
+    marker.pose.orientation.z = 0.0;
+    marker.pose.orientation.w = 1.0;
+    marker.color.r            = pose.color.r / 255;
+    marker.color.g            = pose.color.g / 255;
+    marker.color.b            = pose.color.b / 255;
+    marker.color.a            = 1.0;
+    marker.scale.x            = 0.1;
+    marker.scale.y            = 0.1;
+    marker.scale.z            = 0.1;
+    marker.lifetime           = ros::Duration();
+
+    marker_array.markers.push_back(marker);
+    
+    marker_pub.publish(marker_array);
+
+    // Print point stamped
+    // ROS_INFO("Point: %f, %f, %f", point.point.x, point.point.y, point.point.z);
+
+    geometry_msgs::Pose pose_msg;
+
+    try {
+      pose_msg.position.x = point.point.x;
+      pose_msg.position.y = point.point.y;
+      pose_msg.position.z = point.point.z;
+
+      pose.pose = pose_msg;
+
+      ground_ring_pub.publish(pose);
+    //   search = false;
+    } catch (const std::exception &e) {
+      ROS_ERROR("Transform error: %s", e.what());
+      continue;
+    }
+  }
+}
 
 std::vector<cv::Vec4f> detectCircles(cv::Mat input_img, cv::Mat output_img){
     std::vector<cv::Vec4f> circles, validCircles;
@@ -76,30 +217,36 @@ std::vector<cv::Vec4f> detectCircles(cv::Mat input_img, cv::Mat output_img){
   return validCircles;
 }
 
+void image_callback(
+    const sensor_msgs::Image::ConstPtr &rgb_image,
+    const sensor_msgs::Image::ConstPtr &depth_image
+) {
+    if (!search)
+        return;
+    
+  cv_bridge::CvImageConstPtr cv_ptr;
+  cv_bridge::CvImageConstPtr cv_rgb;
 
-void image_callback(const sensor_msgs::Image::ConstPtr &rgb_image){
-    if(search){
-        ROS_WARN("Image callback");
-        cv_bridge::CvImagePtr cv_rgb;
-        try {
-            cv_rgb = cv_bridge::toCvCopy(rgb_image);
-        } catch (cv_bridge::Exception &e) {
-            ROS_ERROR("cv_bridge exception: %s", e.what());
-            return;
-        }
+  try {
+    cv_ptr = cv_bridge::toCvCopy(depth_image);
+    cv_rgb = cv_bridge::toCvCopy(rgb_image);
+  } catch (const std::exception &e) {
+    ROS_ERROR("cv_bridge exception: %s", e.what());
+    return;
+  }
 
+  // Convert the image to grayscale and to 8bit from 32bit
         cv::Mat gray_img = cv::Mat(cv_rgb->image.rows, cv_rgb->image.cols, CV_8UC1);
         cv::cvtColor(cv_rgb->image, gray_img, CV_BGR2GRAY);
 
-        cv::Mat rgb_img = cv::Mat(cv_rgb->image.rows, cv_rgb->image.cols, CV_8UC3);
-        cv::cvtColor(cv_rgb->image, rgb_img, CV_BGR2RGB);
+  // Same for rgb for showing the result
+  cv::Mat rgb_img = cv::Mat(gray_img.size(), CV_8UC3);
+  cv::cvtColor(gray_img, rgb_img, cv::COLOR_GRAY2RGB);
 
-        std::vector<cv::Vec4f> circles = detectCircles(gray_img, rgb_img);
+  // Detect the circles
+  std::vector<cv::Vec4f> circles = detectCircles(gray_img, rgb_img);
 
-        // Show image with cv2
-        cv::imshow("Image", rgb_img);
-        cv::waitKey(1);
-    }
+  getDepths(circles, cv_ptr, cv_rgb, rgb_img, depth_image->header);
 }
 
 void green_callback(task2::RingPoseMsg pose){
@@ -171,7 +318,16 @@ int main(int argc, char** argv) {
     ros::Subscriber green_sub = nh.subscribe("/custom_msgs/nav/green_ring_detected", 1, &green_callback);
 
     ground_ring_pub = nh.advertise<task2::RingPoseMsg>("/custom_msgs/ground_ring_detection", 1000);
-    ros::Subscriber rgb_sub = nh.subscribe("/arm_camera/rgb/image_raw", 1, &image_callback);
+
+    Subscriber<Image> rgb_sub(nh, rgb_topic, 1);
+    Subscriber<Image> depth_sub(nh, depth_topic, 1);
+
+      // Create a ApproximateTimeSynchronizer to synchronize the rgb and depth images
+    Synchronizer<ApproxSync> sync(ApproxSync(5), rgb_sub, depth_sub);
+
+    // Register a callback for the synchronizer. _1 and _2 are placeholders for the rgb and depth images
+    sync.registerCallback(boost::bind(&image_callback, _1, _2));
+
     arm_pub = nh.advertise<trajectory_msgs::JointTrajectory>("/turtlebot_arm/arm_controller/command", 1000);
 
     ros::spin();
