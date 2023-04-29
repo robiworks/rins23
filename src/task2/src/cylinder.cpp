@@ -65,7 +65,6 @@ public:
     seg.setModelType (pcl::SACMODEL_NORMAL_PLANE);
     seg.setNormalDistanceWeight (0.1);
     seg.setMethodType (pcl::SAC_RANSAC);
-#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
     seg.setMaxIterations (100);
     seg.setDistanceThreshold (0.03);
     seg.setInputCloud (cloud_filtered);
