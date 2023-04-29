@@ -86,6 +86,9 @@ void getDepths(
 
     float distance = accumulator / count;
 
+    if (distance < 0.1 || distance > 2)
+      return;
+
     pose.color.r /= count;
     pose.color.g /= count;
     pose.color.b /= count;
