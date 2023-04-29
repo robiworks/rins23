@@ -101,3 +101,6 @@ target_link_libraries(circle ${catkin_LIBRARIES} ${OpenCV_INCLUDE_DIRS})
 add_executable(task2_cylinder src/cylinder.cpp)
 target_link_libraries(task2_cylinder ${catkin_LIBRARIES} ${message_runtime_LIBRARIES} ${PCL_LIBRARIES})
 
+if(NOT CMAKE_CXX_FLAGS)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra")
+endif()
