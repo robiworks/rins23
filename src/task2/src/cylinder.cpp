@@ -31,6 +31,8 @@ public:
 
   void cloudCallback(const pcl::PointCloud<PointT>::ConstPtr& cloud)
   {
+    ros::Time time_rec;
+    time_rec = ros::Time::now() - ros::Duration(0.5);
     // All the objects needed
     pcl::PassThrough<PointT> pass;
     pcl::NormalEstimation<PointT, pcl::Normal> ne;
@@ -141,7 +143,7 @@ public:
     try
     {
         ros::Time time_test = ros::Time::now();
-        geometry_msgs::TransformStamped tss = tf2_buffer.lookupTransform("map", "camera_rgb_optical_frame",  point_camera.header.stamp);
+        geometry_msgs::TransformStamped tss = tf2_buffer.lookupTransform("map", "camera_rgb_optical_frame",  time_rec);
         tf2::doTransform(point_camera, point_map, tss);
     }
     catch (tf2::TransformException &ex)
@@ -167,18 +169,6 @@ public:
     marker.pose.orientation.y = 0.0;
     marker.pose.orientation.z = 0.0;
     marker.pose.orientation.w = 1.0;
-
-    marker.scale.x = 0.1;
-    marker.scale.y = 0.1;
-    marker.scale.z = 0.1;
-
-    marker.color.r = 0.0f;
-    marker.color.g = 1.0f;
-    marker.color.b = 0.0f;
-    marker.color.a = 1.0f;
-
-    marker.lifetime = ros::Duration();
-
     }
   }
 
