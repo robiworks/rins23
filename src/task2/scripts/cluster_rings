@@ -151,9 +151,9 @@ class RingLocalizer:
             "/custom_msgs/nav/ring_detected", RingPoseMsg, queue_size=10
         )
 
-        self.color_pub = rospy.Publisher(
-            "/custom_msgs/sound/new_color", ColorMsg, queue_size=10
-        )
+        # self.color_pub = rospy.Publisher(
+        #     "/custom_msgs/sound/new_color", ColorMsg, queue_size=10
+        # )
 
         # Setup subscribers
         self.ring_detected_sub = rospy.Subscriber(
@@ -195,15 +195,17 @@ class RingLocalizer:
         is_new = self.ring_holder.update_ring(rpm)
 
         if color == "Green":
+            rpm.color_name = "Green"
             if is_new:
                 print("Green ring detected at: ", rpm)
                 self.green_ring_pub.publish(rpm)
-                self.color_pub.publish(ColorMsg(color=color))
+                # self.color_pub.publish(ColorMsg(color=color))
             print("Green ring detected at: ", rpm)
         else:
+            rpm.color_name = color
             if is_new:
                 self.ring_pub.publish(rpm)
-                self.color_pub.publish(ColorMsg(color=color))
+                # self.color_pub.publish(ColorMsg(color=color))
             print(f"{color} ring detected at:", rpm)
 
     def color_reverse_lookup(self, rgb):
@@ -244,11 +246,11 @@ class RingLocalizer:
             #     if are_all_values_same:
             #         closest_color_name = color_name
             #         break
-                     
-                # distance = np.linalg.norm(np.array(rgb) - np.array(color_rgb))
-                # if distance < min_distance:
-                #     min_distance = distance
-                #     closest_color_name = color_name
+
+            # distance = np.linalg.norm(np.array(rgb) - np.array(color_rgb))
+            # if distance < min_distance:
+            #     min_distance = distance
+            #     closest_color_name = color_name
 
             # print("Closest color is: ", closest_color_name)
             return closest_color_name
