@@ -8,6 +8,9 @@
 #include <ros/ros.h>
 #include <sensor_msgs/Image.h>
 #include <task2/RingPoseMsg.h>
+#include <tf2/transform_datatypes.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+#include <tf2_ros/transform_listener.h>
 #include <visualization_msgs/Marker.h>
 #include <visualization_msgs/MarkerArray.h>
 
@@ -17,10 +20,12 @@ using namespace cv_bridge;
 
 typedef sync_policies::ApproximateTime<Image, Image> ApproxSync;
 
-ros::Publisher pose_pub;
-ros::Publisher marker_pub;
-visualization_msgs::MarkerArray    marker_array;
+ros::Publisher                  pose_pub;
+ros::Publisher                  marker_pub;
+visualization_msgs::MarkerArray marker_array;
 
+tf2_ros::Buffer*            tfBuffer   = NULL;
+tf2_ros::TransformListener* tfListener = NULL;
 
 bool debug;
 
@@ -123,7 +128,7 @@ void getDepths(
     marker.type               = visualization_msgs::Marker::SPHERE;
     marker.action             = visualization_msgs::Marker::ADD;
     marker.pose.position.x    = point.point.x;
-    marker.pose.position.y    = point.point.y;    
+    marker.pose.position.y    = point.point.y;
     marker.pose.position.z    = point.point.z;
     marker.pose.orientation.x = 0.0;
     marker.pose.orientation.y = 0.0;
@@ -139,7 +144,7 @@ void getDepths(
     marker.lifetime           = ros::Duration();
 
     marker_array.markers.push_back(marker);
-    
+
     marker_pub.publish(marker_array);
 
     // Print point stamped
@@ -148,9 +153,13 @@ void getDepths(
     geometry_msgs::Pose pose_msg;
 
     try {
-      pose_msg.position.x = point.point.x;
-      pose_msg.position.y = point.point.y;
-      pose_msg.position.z = point.point.z;
+      geometry_msgs::PointStamped ps;
+      ps = tfBuffer->transform(point, "map", ros::Duration(3.0));
+      ROS_INFO("transform: %f %f %f", ps.point.x, ps.point.y, ps.point.z);
+
+      pose_msg.position.x = ps.point.x;
+      pose_msg.position.y = ps.point.y;
+      pose_msg.position.z = ps.point.z;
 
       pose.pose = pose_msg;
 
@@ -279,7 +288,7 @@ int main(int argc, char** argv) {
   // Create a ROS subscriber for rgb and depth images
   Subscriber<Image> rgb_sub(nh, rgb_topic, 1);
   Subscriber<Image> depth_sub(nh, depth_topic, 1);
-  
+
   // Create a marker publisher
   marker_pub = nh.advertise<visualization_msgs::MarkerArray>("visualization_marker", 10000);
 
@@ -291,6 +300,10 @@ int main(int argc, char** argv) {
 
   // Create a ROS publisher for the color pose
   pose_pub = nh.advertise<task2::RingPoseMsg>("/custom_msgs/ring_detection", 1000);
+
+  // Create a buffer and listener for coordinate transforms
+  tfBuffer   = new tf2_ros::Buffer;
+  tfListener = new tf2_ros::TransformListener(*tfBuffer);
 
   // Spin
   ros::spin();
