@@ -14,6 +14,6 @@
   <!-- roslaunch task2 circles.launch -->
   <include file="$(find task2)/launch/circles.launch" />
 
-  <!-- Include the cluster_rings Python script -->
-  <!-- <node pkg="task2" type="cluster_rings.py" name="cluster_rings_node" output="screen" /> -->
+  <!-- Include the clustering Python script -->
+  <!-- <node pkg="task2" type="clustering.py" name="clustering_node" output="screen" /> -->
 </launch>
