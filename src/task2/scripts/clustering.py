@@ -150,7 +150,7 @@ class DBSCANClustering:
 
         rpm = RingPoseMsg()
         rpm.pose.position.x = ring_pose[0]
-        rpm.pose.position.z = ring_pose[1]
+        rpm.pose.position.y = ring_pose[1]
         rpm.color.r = ring_pose[2]
         rpm.color.g = ring_pose[3]
         rpm.color.b = ring_pose[4]
@@ -170,9 +170,9 @@ class Clustering:
             "/custom_msgs/nav/ring_detected", RingPoseMsg, queue_size=10
         )
 
-        self.color_pub = rospy.Publisher(
-            "/custom_msgs/sound/new_color", ColorMsg, queue_size=10
-        )
+        # self.color_pub = rospy.Publisher(
+        #     "/custom_msgs/sound/new_color", ColorMsg, queue_size=10
+        # )
 
         self.cylinder_pub = rospy.Publisher(
             "/custom_msgs/nav/cylinder_detected", RingPoseMsg, queue_size=10
@@ -248,7 +248,7 @@ class Clustering:
         x = np.array(
             [
                 msg.pose.position.x,
-                msg.pose.position.z,  # for some reason
+                msg.pose.position.y,  # for some reason
                 msg.color.r,
                 msg.color.g,
                 msg.color.b,
@@ -266,15 +266,17 @@ class Clustering:
         is_new = self.ring_holder.update_ring(rpm, color)
 
         if color == "Green":
+            rpm.color_name = "Green"
             if is_new:
                 print("Green ring detected at: ", rpm)
                 self.green_ring_pub.publish(rpm)
-                self.color_pub.publish(ColorMsg(color=color))
+                # self.color_pub.publish(ColorMsg(color=color))
             print("Green ring detected at: ", rpm)
         else:
+            rpm.color_name = color
             if is_new:
                 self.ring_pub.publish(rpm)
-                self.color_pub.publish(ColorMsg(color=color))
+                # self.color_pub.publish(ColorMsg(color=color))
             print(f"{color} ring detected at:", rpm)
 
     def color_reverse_lookup(self, rgb, type="ring"):

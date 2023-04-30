@@ -10,7 +10,6 @@
 #include <signal.h>
 #include <sound_play/sound_play.h>
 #include <stdlib.h>
-#include <task2/ColorMsg.h>
 #include <task2/RingPoseMsg.h>
 
 using namespace std;
@@ -24,9 +23,9 @@ typedef actionlib::SimpleActionClient<move_base_msgs::MoveBaseAction> MoveBaseCl
 /* ------------------------------------------------------------------------- */
 
 struct NavigatorPoint {
-    float x;
-    float y;
-    bool  spin;
+    double x;
+    double y;
+    bool   spin;
 };
 
 enum NavigatorState {
@@ -61,8 +60,9 @@ class Navigator {
       currentState = NavigatorState::IDLE;
     }
 
-    Navigator(ros::Publisher* cmdvelPub) : Navigator() {
+    Navigator(ros::Publisher* cmdvelPub, int numberOfRings) : Navigator() {
       cmdvelPublisher = cmdvelPub;
+      NUMBER_OF_RINGS = numberOfRings;
     }
 
     // Navigate to a given point
@@ -91,35 +91,47 @@ class Navigator {
       int len = points.size();
 
       for (int i = 0; i < len; i++) {
-        navigateTo(points[i]);
+        if (ringsFound < NUMBER_OF_RINGS) {
+          navigateTo(points[i]);
+        }
       }
     }
 
-    // Callback to handle:
-    // - /custom_msgs/nav/green_ring_detected
-    // - /custom_msgs/nav/ring_detected
+    // Callback to handle /custom_msgs/nav/ring_detected
     void ringCallback(const task2::RingPoseMsgConstPtr &msg) {
       ROS_INFO(
-          "[Navigator] Received new ring detected message: (x: %f, y: %f, z: %f)",
+          "[Navigator] Received new ring detected message: (x: %f, y: %f, z: %f, color: %s)",
+          msg->pose.position.x,
+          msg->pose.position.y,
+          msg->pose.position.z,
+          msg->color_name.c_str()
+      );
+      sayRingColor(msg->color_name);
+      ringsFound++;
+    }
+
+    // Callback to handle /custom_msgs/nav/green_ring_detected
+    void greenRingCallback(const task2::RingPoseMsgConstPtr &msg) {
+      ROS_WARN(
+          "[Navigator] Green ring detected at (x: %f, y: %f, z: %f)",
           msg->pose.position.x,
           msg->pose.position.y,
           msg->pose.position.z
       );
-      ROS_INFO("[Navigator] Expecting to process color callback soon");
-    }
+      sayRingColor(msg->color_name);
+      ringsFound++;
 
-    // Callback to handle /custom_msgs/sound/new_color
-    void colorCallback(const task2::ColorMsgConstPtr &msg) {
-      ROS_INFO(
-          "[Navigator] Received color message. Stopping and playing sound of ring color: %s",
-          msg->color.c_str()
+      // Activate parking spot search
+      NavigatorPoint parkingPoint { msg->pose.position.x + 0.105, msg->pose.position.y, false };
+      ROS_WARN(
+          "[Navigator] Navigating to parking point: (x: %f, y: %f)",
+          parkingPoint.x,
+          parkingPoint.y
       );
-      goalCancelled = true;
-      client->cancelGoal();
 
-      // Say the color of the ring
-      soundClient->say(msg->color);
-      ros::Duration(1.0).sleep();
+      isParking = true;
+      client->cancelGoal();
+      navigateTo(parkingPoint);
     }
 
     // Clean up (used on SIGINT)
@@ -135,8 +147,11 @@ class Navigator {
     NavigatorPoint           currentGoal;
     sound_play::SoundClient* soundClient;
     ros::Publisher*          cmdvelPublisher;
-    bool                     isKilled      = false;
-    bool                     goalCancelled = false;
+    bool                     isKilled        = false;
+    bool                     goalCancelled   = false;
+    bool                     isParking       = false;
+    int                      NUMBER_OF_RINGS = 3;
+    int                      ringsFound      = 0;
 
     void monitorNavigation() {
       // Monitor navigation until it reaches a terminal state
@@ -195,6 +210,15 @@ class Navigator {
         case actionlib::SimpleClientGoalState::SUCCEEDED:
           ROS_INFO("[Navigator] Successfully completed goal!");
 
+          // Check if this was a parking maneuver
+          if (isParking) {
+            soundClient->say("I have finished parking myself!");
+            ros::Duration(4.0).sleep();
+            currentState = NavigatorState::FINISHED;
+            isParking    = false;
+            break;
+          }
+
           // Spin 360 degrees if the interest points wants us to do so
           if (currentGoal.spin) {
             spin(360.0);
@@ -234,6 +258,17 @@ class Navigator {
       // Stop the robot after it finishes rotating
       msg.angular.z = 0;
       cmdvelPublisher->publish(msg);
+    }
+
+    void sayRingColor(std::string color_name) {
+      // Stop the robot temporarily
+      goalCancelled = true;
+      client->cancelGoal();
+
+      // Say the color of the ring
+      std::string speak = "I see a " + color_name + " ring!";
+      soundClient->say(speak);
+      ros::Duration(2.0).sleep();
     }
 };
 
@@ -337,31 +372,30 @@ int main(int argc, char* argv[]) {
 
   // Vector of interest points in the map
   vector<NavigatorPoint> interestPoints {
-    {-0.9712396264076233,  0.3039016127586365, false},
-    {  -0.81903076171875,  1.5590908527374268,  true},
-    {0.07623038440942764,   2.691239356994629, false},
-    { 2.1217899322509766,  2.7076127529144287, false},
-    { 2.5573792457580566,  1.3039171695709229, false},
-    {  1.286680817604065,  0.5794230103492737,  true},
-    {  3.354393482208252, 0.27303266525268555, false},
-    {  3.716524362564087, -0.4115545153617859,  true},
-    { 2.0537025928497314,  -1.007872462272644, false},
-    {-0.1095728874206543, -1.1081676483154297,  true},
+    { 0.3815518319606781,  -1.021867036819458, false},
+    { 2.1781322956085205,  -1.012013554573059, false},
+    { 3.1676177978515625,  0.2698194980621338,  true},
+    { 1.1551456451416016,  0.9515640139579773, false},
+    { 1.0135111808776855,   2.656785011291504, false},
+    {-0.6259070038795471,   2.225338935852051,  true},
+    {-1.4852330684661865, 0.15332327783107758,  true},
   };
 
   // Initialize publisher for robot rotation
   ros::Publisher cmdvelPub = nh.advertise<geometry_msgs::Twist>("/cmd_vel_mux/input/navi", 10);
 
   // Initialize Navigator
-  navigator = new Navigator(&cmdvelPub);
+  navigator = new Navigator(&cmdvelPub, 4);
 
   // Initialize ring detection subscribers
-  ros::Subscriber greenRingSub =
-      nh.subscribe("/custom_msgs/nav/green_ring_detected", 1, &Navigator::ringCallback, navigator);
+  ros::Subscriber greenRingSub = nh.subscribe(
+      "/custom_msgs/nav/green_ring_detected",
+      1,
+      &Navigator::greenRingCallback,
+      navigator
+  );
   ros::Subscriber ringSub =
       nh.subscribe("/custom_msgs/nav/ring_detected", 1, &Navigator::ringCallback, navigator);
-  ros::Subscriber colorSub =
-      nh.subscribe("/custom_msgs/sound/new_color", 1, &Navigator::colorCallback, navigator);
 
   // Navigate through interest points
   navigator->navigateList(interestPoints);
