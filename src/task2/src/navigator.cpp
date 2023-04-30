@@ -134,6 +134,18 @@ class Navigator {
       navigateTo(parkingPoint);
     }
 
+    // Callback to handle /custom_msgs/nav/cylinder_detected
+    void cylinderCallback(const task2::RingPoseMsgConstPtr &msg) {
+      ROS_INFO(
+          "[Navigator] Received new cylinder detected message: (x: %f, y: %f, z: %f, color: %s)",
+          msg->pose.position.x,
+          msg->pose.position.y,
+          msg->pose.position.z,
+          msg->color_name.c_str()
+      );
+      sayCylinderColor(msg->color_name);
+    }
+
     // Clean up (used on SIGINT)
     void cleanUp() {
       // Cancel all goals on the client and stop playing sounds
@@ -270,6 +282,17 @@ class Navigator {
       soundClient->say(speak);
       ros::Duration(2.0).sleep();
     }
+
+    void sayCylinderColor(std::string color_name) {
+      // Stop the robot temporarily
+      goalCancelled = true;
+      client->cancelGoal();
+
+      // Say the color of the cylinder
+      std::string speak = "I see a " + color_name + " cylinder!";
+      soundClient->say(speak);
+      ros::Duration(2.0).sleep();
+    }
 };
 
 /* ------------------------------------------------------------------------- */
@@ -396,6 +419,14 @@ int main(int argc, char* argv[]) {
   );
   ros::Subscriber ringSub =
       nh.subscribe("/custom_msgs/nav/ring_detected", 1, &Navigator::ringCallback, navigator);
+
+  // Initialize cylinder detection subscriber
+  ros::Subscriber cylinderSub = nh.subscribe(
+      "/custom_msgs/nav/cylinder_detected",
+      1,
+      &Navigator::cylinderCallback,
+      navigator
+  );
 
   // Navigate through interest points
   navigator->navigateList(interestPoints);
