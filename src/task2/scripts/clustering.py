@@ -1,20 +1,12 @@
 #!/usr/bin/python3
 
-import sys
 import rospy
-import cv2
 import numpy as np
-import tf2_geometry_msgs
-import tf2_ros
 import time
 
-from os.path import dirname, join
-import os
-import datetime
 from sklearn.cluster import DBSCAN
 from task2.msg import RingPoseMsg, ColorMsg
 from collections import deque
-import time
 from typing import List
 from dataclasses import dataclass
 
@@ -227,8 +219,6 @@ class Clustering:
             ]
         )
 
-        # print(f"Hello cylinder, I see you: {msg}")
-
         if np.isnan(x).any():
             return
 
@@ -236,8 +226,8 @@ class Clustering:
         if rpm is None:
             return
 
-        rpm.color.r = msg.color.r 
-        rpm.color.g = msg.color.g 
+        rpm.color.r = msg.color.r
+        rpm.color.g = msg.color.g
         rpm.color.b = msg.color.b
 
         rgb = np.array([msg.color.r, msg.color.g, msg.color.b])
@@ -288,14 +278,7 @@ class Clustering:
             print(f"{color} ring detected at:", rpm)
 
     def color_reverse_lookup(self, rgb, type="ring"):
-        if type == "cylinder":
-            base_colors = CYLINDERS_ON_POLYGON
-        elif type == "ring":
-            base_colors = RINGS_ON_POLYGON
-
-        def closest_color(rgb, color_dict):
-            min_distance = float("inf")
-            closest_color_name = None
+        def closest_color_ring(rgb):
             # If first value is biggest, then it is red
             if rgb[0] > rgb[1] and rgb[0] > rgb[2]:
                 return "Red"
@@ -311,27 +294,25 @@ class Clustering:
                 and abs(rgb[0] - rgb[2]) < 0.05 * rgb[0]
             ):
                 return "Black"
-            # for color_name, color_rgb in color_dict.items():
-            #     # print(color_name, color_rgb)
-            #     # Find the value with biggest value. If all values are the same, then it is black
-            #     max_value = max(color_rgb)
-            #     print(rgb)
-            #     are_all_values_same = all(
-            #         value == max_value for value in color_rgb
-            #     )
-            #     if are_all_values_same:
-            #         closest_color_name = color_name
-            #         break
-                     
-                # distance = np.linalg.norm(np.array(rgb) - np.array(color_rgb))
-                # if distance < min_distance:
-                #     min_distance = distance
-                #     closest_color_name = color_name
+            return "Unknown"  # Idk what here..
 
-            # print("Closest color is: ", closest_color_name)
+        def closest_color_cylinder(rgb, color_dict):
+            min_distance = float("inf")
+            closest_color_name = None
+            for color_name, color_rgb in color_dict.items():
+                distance = np.linalg.norm(np.array(rgb) - np.array(color_rgb))
+                if distance < min_distance:
+                    min_distance = distance
+                    closest_color_name = color_name
             return closest_color_name
 
-        return closest_color(rgb, base_colors)
+        if type == "cylinder":
+            base_colors = CYLINDERS_ON_POLYGON
+            return closest_color_cylinder(rgb, base_colors)
+        elif type == "ring":
+            base_colors = RINGS_ON_POLYGON
+            return closest_color_ring(rgb)
+        return None
 
 
 def main():
