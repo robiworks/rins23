@@ -17,11 +17,10 @@
 #include <pcl_conversions/pcl_conversions.h>
 #include <ros/ros.h>
 #include <sensor_msgs/PointCloud2.h>
+#include <task2/RingPoseMsg.h>
 #include <visualization_msgs/Marker.h>
 
-ros::Publisher pubx;
-ros::Publisher puby;
-ros::Publisher pubm;
+ros::Publisher cylinder_publisher;
 
 tf2_ros::Buffer tf2_buffer;
 
@@ -91,7 +90,6 @@ void cloud_cb(const pcl::PCLPointCloud2ConstPtr &cloud_blob) {
 
   pcl::PCLPointCloud2 outcloud_plane;
   pcl::toPCLPointCloud2(*cloud_plane, outcloud_plane);
-  pubx.publish(outcloud_plane);
 
   // Remove the planar inliers, extract the rest
   extract.setNegative(true);
@@ -103,7 +101,6 @@ void cloud_cb(const pcl::PCLPointCloud2ConstPtr &cloud_blob) {
 
   // Check if there are any points left
   if (cloud_filtered2->points.empty() || cloud_normals2->points.empty()) {
-    ROS_WARN("Could not find any points remaining after planar extraction.");
     return;
   }
 
@@ -177,9 +174,24 @@ void cloud_cb(const pcl::PCLPointCloud2ConstPtr &cloud_blob) {
 
     std::cerr << "point_map: " << point_map.point.x << " " << point_map.point.y << " "
               << point_map.point.z << std::endl;
+
+    task2::RingPoseMsg  cylinder_msg;
+    geometry_msgs::Pose pose;
+
+    pose.position.x = point_map.point.x;
+    pose.position.y = point_map.point.y;
+    pose.position.z = point_map.point.z;
+
+    cylinder_msg.color.r = r_avg;
+    cylinder_msg.color.g = g_avg;
+    cylinder_msg.color.b = b_avg;
+    cylinder_msg.pose   = pose;
+
+    cylinder_publisher.publish(cylinder_msg);
   }
 missdetection:
   std::cerr << "Can't find the cylindrical component." << std::endl;
+  return;
 }
 
 int main(int argc, char** argv) {
@@ -194,8 +206,7 @@ int main(int argc, char** argv) {
   ros::Subscriber sub = nh.subscribe("/camera/depth/points", 1, cloud_cb);
 
   // Create a ROS publisher for the output point cloud
-  pubx = nh.advertise<pcl::PCLPointCloud2>("/custom_msgs/cylinder_detection", 1);
-
+  cylinder_publisher = nh.advertise<task2::RingPoseMsg>("/custom_msgs/cylinder_detection", 1);
   // Spin
   ros::spin();
 }
