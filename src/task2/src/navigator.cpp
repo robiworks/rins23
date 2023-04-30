@@ -10,7 +10,6 @@
 #include <signal.h>
 #include <sound_play/sound_play.h>
 #include <stdlib.h>
-#include <task2/ColorMsg.h>
 #include <task2/RingPoseMsg.h>
 
 using namespace std;
@@ -24,15 +23,16 @@ typedef actionlib::SimpleActionClient<move_base_msgs::MoveBaseAction> MoveBaseCl
 /* ------------------------------------------------------------------------- */
 
 struct NavigatorPoint {
-    float x;
-    float y;
-    bool  spin;
+    double x;
+    double y;
+    bool   spin;
 };
 
 enum NavigatorState {
   IDLE,       // Navigation is idle, only applicable at the start
   PREPARING,  // Navigation is preparing to start
   NAVIGATING, // Robot is navigating around the map
+  PARKING,    // Robot is attempting to park itself
   FINISHED,   // Navigation finished successfully
   FAILED      // Navigation failed
 };
@@ -95,31 +95,38 @@ class Navigator {
       }
     }
 
-    // Callback to handle:
-    // - /custom_msgs/nav/green_ring_detected
-    // - /custom_msgs/nav/ring_detected
+    // Callback to handle /custom_msgs/nav/ring_detected
     void ringCallback(const task2::RingPoseMsgConstPtr &msg) {
       ROS_INFO(
-          "[Navigator] Received new ring detected message: (x: %f, y: %f, z: %f)",
+          "[Navigator] Received new ring detected message: (x: %f, y: %f, z: %f, color: %s)",
+          msg->pose.position.x,
+          msg->pose.position.y,
+          msg->pose.position.z,
+          msg->color_name.c_str()
+      );
+
+      sayRingColor(msg->color_name);
+    }
+
+    // Callback to handle /custom_msgs/nav/green_ring_detected
+    void greenRingCallback(const task2::RingPoseMsgConstPtr &msg) {
+      ROS_WARN(
+          "[Navigator] Green ring detected at (x: %f, y: %f, z: %f)",
           msg->pose.position.x,
           msg->pose.position.y,
           msg->pose.position.z
       );
-      ROS_INFO("[Navigator] Expecting to process color callback soon");
-    }
+      sayRingColor(msg->color_name);
 
-    // Callback to handle /custom_msgs/sound/new_color
-    void colorCallback(const task2::ColorMsgConstPtr &msg) {
-      ROS_INFO(
-          "[Navigator] Received color message. Stopping and playing sound of ring color: %s",
-          msg->color.c_str()
+      // Activate parking spot search
+      NavigatorPoint parkingPoint { msg->pose.position.x, msg->pose.position.z, true };
+      ROS_WARN(
+          "[Navigator] Navigating to parking point: (x: %f, y: %f)",
+          parkingPoint.x,
+          parkingPoint.y
       );
-      goalCancelled = true;
-      client->cancelGoal();
-
-      // Say the color of the ring
-      soundClient->say(msg->color);
-      ros::Duration(1.0).sleep();
+      currentState = NavigatorState::PARKING;
+      navigateTo(parkingPoint);
     }
 
     // Clean up (used on SIGINT)
@@ -234,6 +241,17 @@ class Navigator {
       // Stop the robot after it finishes rotating
       msg.angular.z = 0;
       cmdvelPublisher->publish(msg);
+    }
+
+    void sayRingColor(std::string color_name) {
+      // Stop the robot temporarily
+      goalCancelled = true;
+      client->cancelGoal();
+
+      // Say the color of the ring
+      std::string speak = "I see a " + color_name + " ring!";
+      soundClient->say(speak);
+      ros::Duration(2.0).sleep();
     }
 };
 
@@ -354,12 +372,14 @@ int main(int argc, char* argv[]) {
   navigator = new Navigator(&cmdvelPub);
 
   // Initialize ring detection subscribers
-  ros::Subscriber greenRingSub =
-      nh.subscribe("/custom_msgs/nav/green_ring_detected", 1, &Navigator::ringCallback, navigator);
+  ros::Subscriber greenRingSub = nh.subscribe(
+      "/custom_msgs/nav/green_ring_detected",
+      1,
+      &Navigator::greenRingCallback,
+      navigator
+  );
   ros::Subscriber ringSub =
       nh.subscribe("/custom_msgs/nav/ring_detected", 1, &Navigator::ringCallback, navigator);
-  ros::Subscriber colorSub =
-      nh.subscribe("/custom_msgs/sound/new_color", 1, &Navigator::colorCallback, navigator);
 
   // Navigate through interest points
   navigator->navigateList(interestPoints);
