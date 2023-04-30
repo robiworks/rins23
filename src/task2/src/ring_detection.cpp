@@ -31,12 +31,6 @@ void getDepths(
     cv::Mat                           output,
     std_msgs::Header                  depth_header
 ) {
-  // ROS_INFO("Getting depths");
-
-  if (debug) {
-    cv::imshow("rgb", output);
-    cv::waitKey(1);
-  }
 
   // Get the depth image
   for (size_t i = 0; i < circles.size(); i++) {

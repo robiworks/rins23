@@ -129,12 +129,11 @@ void cloud_cb(const pcl::PCLPointCloud2ConstPtr &cloud_blob) {
   extract.filter(*cloud_cylinder);
 
   if (cloud_cylinder->points.empty())
-    std::cerr << "Can't find the cylindrical component." << std::endl;
+    goto missdetection;
   else {
     pcl::compute3DCentroid(*cloud_cylinder, centroid);
-    std::cerr << "centroid of the cylindrical component: " << centroid[0] << " " << centroid[1]
-              << " " << centroid[2] << " " << centroid[3] << std::endl;
-
+    //std::cerr << "centroid of the cylindrical component: " << centroid[0] << " " << centroid[1]
+    //          << " " << centroid[2] << " " << centroid[3] << std::endl;
     geometry_msgs::PointStamped     point_camera;
     geometry_msgs::PointStamped     point_map;
     visualization_msgs::Marker      marker;
@@ -162,6 +161,9 @@ void cloud_cb(const pcl::PCLPointCloud2ConstPtr &cloud_blob) {
     int g_avg = g_total / num_points;
     int b_avg = b_total / num_points;
 
+    if ((r_avg > 200 && g_avg > 200 && b_avg > 200) || (r_avg == g_avg && g_avg == b_avg))
+      goto missdetection; // missdetection
+
     std::cout << "Average color of the cylinder (R, G, B): (" << r_avg << ", " << g_avg << ", "
               << b_avg << ")" << std::endl;
 
@@ -176,6 +178,8 @@ void cloud_cb(const pcl::PCLPointCloud2ConstPtr &cloud_blob) {
     std::cerr << "point_map: " << point_map.point.x << " " << point_map.point.y << " "
               << point_map.point.z << std::endl;
   }
+missdetection:
+  std::cerr << "Can't find the cylindrical component." << std::endl;
 }
 
 int main(int argc, char** argv) {
@@ -190,10 +194,7 @@ int main(int argc, char** argv) {
   ros::Subscriber sub = nh.subscribe("/camera/depth/points", 1, cloud_cb);
 
   // Create a ROS publisher for the output point cloud
-  pubx = nh.advertise<pcl::PCLPointCloud2>("/custom_msgs", 1);
-  puby = nh.advertise<pcl::PCLPointCloud2>("cylinder", 1);
-
-  pubm = nh.advertise<visualization_msgs::Marker>("detected_cylinder", 1);
+  pubx = nh.advertise<pcl::PCLPointCloud2>("/custom_msgs/cylinder_detection", 1);
 
   // Spin
   ros::spin();
