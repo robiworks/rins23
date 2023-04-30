@@ -232,6 +232,7 @@ class Clustering:
 
         rgb = np.array([msg.color.r, msg.color.g, msg.color.b])
         color = self.color_reverse_lookup(rgb, "cylinder")
+        rpm.color_name = color
 
         is_new = self.cylinder_holder.update_ring(rpm, color)
         if is_new:
