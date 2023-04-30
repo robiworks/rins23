@@ -32,7 +32,6 @@ enum NavigatorState {
   IDLE,       // Navigation is idle, only applicable at the start
   PREPARING,  // Navigation is preparing to start
   NAVIGATING, // Robot is navigating around the map
-  PARKING,    // Robot is attempting to park itself
   FINISHED,   // Navigation finished successfully
   FAILED      // Navigation failed
 };
@@ -61,8 +60,9 @@ class Navigator {
       currentState = NavigatorState::IDLE;
     }
 
-    Navigator(ros::Publisher* cmdvelPub) : Navigator() {
+    Navigator(ros::Publisher* cmdvelPub, int numberOfRings) : Navigator() {
       cmdvelPublisher = cmdvelPub;
+      NUMBER_OF_RINGS = numberOfRings;
     }
 
     // Navigate to a given point
@@ -91,7 +91,9 @@ class Navigator {
       int len = points.size();
 
       for (int i = 0; i < len; i++) {
-        navigateTo(points[i]);
+        if (ringsFound < NUMBER_OF_RINGS) {
+          navigateTo(points[i]);
+        }
       }
     }
 
@@ -104,8 +106,8 @@ class Navigator {
           msg->pose.position.z,
           msg->color_name.c_str()
       );
-
       sayRingColor(msg->color_name);
+      ringsFound++;
     }
 
     // Callback to handle /custom_msgs/nav/green_ring_detected
@@ -117,15 +119,18 @@ class Navigator {
           msg->pose.position.z
       );
       sayRingColor(msg->color_name);
+      ringsFound++;
 
       // Activate parking spot search
-      NavigatorPoint parkingPoint { msg->pose.position.x, msg->pose.position.z, true };
+      NavigatorPoint parkingPoint { msg->pose.position.x + 0.105, msg->pose.position.y, false };
       ROS_WARN(
           "[Navigator] Navigating to parking point: (x: %f, y: %f)",
           parkingPoint.x,
           parkingPoint.y
       );
-      currentState = NavigatorState::PARKING;
+
+      isParking = true;
+      client->cancelGoal();
       navigateTo(parkingPoint);
     }
 
@@ -142,8 +147,11 @@ class Navigator {
     NavigatorPoint           currentGoal;
     sound_play::SoundClient* soundClient;
     ros::Publisher*          cmdvelPublisher;
-    bool                     isKilled      = false;
-    bool                     goalCancelled = false;
+    bool                     isKilled        = false;
+    bool                     goalCancelled   = false;
+    bool                     isParking       = false;
+    int                      NUMBER_OF_RINGS = 3;
+    int                      ringsFound      = 0;
 
     void monitorNavigation() {
       // Monitor navigation until it reaches a terminal state
@@ -201,6 +209,15 @@ class Navigator {
         // The action server successfully completed the goal
         case actionlib::SimpleClientGoalState::SUCCEEDED:
           ROS_INFO("[Navigator] Successfully completed goal!");
+
+          // Check if this was a parking maneuver
+          if (isParking) {
+            soundClient->say("I have finished parking myself!");
+            ros::Duration(4.0).sleep();
+            currentState = NavigatorState::FINISHED;
+            isParking    = false;
+            break;
+          }
 
           // Spin 360 degrees if the interest points wants us to do so
           if (currentGoal.spin) {
@@ -355,21 +372,20 @@ int main(int argc, char* argv[]) {
 
   // Vector of interest points in the map
   vector<NavigatorPoint> interestPoints {
-    {  0.6656809449195862,   -1.025087833404541, true},
-    {  2.2732038497924805,  -0.9583665132522583, true},
-    {  3.3890113830566406, -0.01809539832174778, true},
-    {   2.533097982406616,   0.7117891907691956, true},
-    {   1.046423316001892,    2.636078119277954, true},
-    {-0.02937113679945469,    2.453169107437134, true},
-    { -1.4355255365371704,   1.9869579076766968, true},
-    { -0.6179242134094238,  0.18519659340381622, true},
+    { 0.3815518319606781,  -1.021867036819458, false},
+    { 2.1781322956085205,  -1.012013554573059, false},
+    { 3.1676177978515625,  0.2698194980621338,  true},
+    { 1.1551456451416016,  0.9515640139579773, false},
+    { 1.0135111808776855,   2.656785011291504, false},
+    {-0.6259070038795471,   2.225338935852051,  true},
+    {-1.4852330684661865, 0.15332327783107758,  true},
   };
 
   // Initialize publisher for robot rotation
   ros::Publisher cmdvelPub = nh.advertise<geometry_msgs::Twist>("/cmd_vel_mux/input/navi", 10);
 
   // Initialize Navigator
-  navigator = new Navigator(&cmdvelPub);
+  navigator = new Navigator(&cmdvelPub, 4);
 
   // Initialize ring detection subscribers
   ros::Subscriber greenRingSub = nh.subscribe(

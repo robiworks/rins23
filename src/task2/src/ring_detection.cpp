@@ -155,7 +155,7 @@ void getDepths(
     try {
       geometry_msgs::PointStamped ps;
       ps = tfBuffer->transform(point, "map", ros::Duration(3.0));
-      ROS_INFO("transform: %f %f %f", ps.point.x, ps.point.y, ps.point.z);
+      // ROS_INFO("transform: %f %f %f", ps.point.x, ps.point.y, ps.point.z);
 
       pose_msg.position.x = ps.point.x;
       pose_msg.position.y = ps.point.y;
