@@ -131,7 +131,7 @@ class RingDifferentialLocalizer:
 
         rpm = RingPoseMsg()
         rpm.pose.position.x = ring_pose[0]
-        rpm.pose.position.z = ring_pose[1]
+        rpm.pose.position.y = ring_pose[1]
         rpm.color.r = ring_pose[2]
         rpm.color.g = ring_pose[3]
         rpm.color.b = ring_pose[4]
@@ -177,7 +177,7 @@ class RingLocalizer:
         x = np.array(
             [
                 msg.pose.position.x,
-                msg.pose.position.z,  # for some reason
+                msg.pose.position.y,  # for some reason
                 msg.color.r,
                 msg.color.g,
                 msg.color.b,
