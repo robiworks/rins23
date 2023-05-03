@@ -1,0 +1,10 @@
+<launch>
+  <!-- roslaunch task2 circles.launch -->
+  <include file="$(find task2)/launch/circles.launch" />
+
+  <!-- roslaunch task2 ground.launch -->
+  <include file="$(find task2)/launch/ground.launch" />
+
+  <!-- Include the cylinder detection node -->
+  <node pkg="task2" type="task2_cylinder" name="cylinder_node" output="screen" /> -->
+</launch>
