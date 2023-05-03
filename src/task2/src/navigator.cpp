@@ -122,7 +122,7 @@ class Navigator {
       ringsFound++;
 
       // Activate parking spot search
-      NavigatorPoint parkingPoint { msg->pose.position.x + 0.105, msg->pose.position.y, false };
+      NavigatorPoint parkingPoint { msg->pose.position.x + 0.215, msg->pose.position.y, false };
       ROS_WARN(
           "[Navigator] Navigating to parking point: (x: %f, y: %f)",
           parkingPoint.x,
@@ -406,7 +406,8 @@ int main(int argc, char* argv[]) {
   vector<NavigatorPoint> interestPoints {
     {  0.3815518319606781,  -1.021867036819458, false},
     {  2.1781322956085205,  -1.012013554573059, false},
-    {   3.067993640899658,  0.6086423993110657,  true},
+    {  2.6001322956085205,  -0.3131423993110657, true},
+    {   3.067493640899658,  0.7811423993110657,  true},
     {  1.4856997728347778,  0.9578039050102234,  true},
     {  1.0135111808776855,   2.656785011291504,  true},
     {-0.39255309104919434,  2.8976528644561768,  true},
