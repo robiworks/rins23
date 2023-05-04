@@ -60,9 +60,10 @@ class Navigator {
       currentState = NavigatorState::IDLE;
     }
 
-    Navigator(ros::Publisher* cmdvelPub, int numberOfRings) : Navigator() {
+    Navigator(ros::Publisher* cmdvelPub, int numberOfRings, int numberOfCylinders) : Navigator() {
       cmdvelPublisher = cmdvelPub;
       NUMBER_OF_RINGS = numberOfRings;
+      NUMBER_OF_CYLINDERS = numberOfCylinders;
     }
 
     // Navigate to a given point
@@ -91,7 +92,7 @@ class Navigator {
       int len = points.size();
 
       for (int i = 0; i < len; i++) {
-        if (ringsFound < NUMBER_OF_RINGS) {
+        if (ringsFound < NUMBER_OF_RINGS || cylindersFound < NUMBER_OF_CYLINDERS) {
           navigateTo(points[i]);
         }
       }
@@ -143,6 +144,7 @@ class Navigator {
           msg->pose.position.z,
           msg->color_name.c_str()
       );
+      cylindersFound++;
       sayCylinderColor(msg->color_name);
     }
 
@@ -163,7 +165,9 @@ class Navigator {
     bool                     goalCancelled   = false;
     bool                     isParking       = false;
     int                      NUMBER_OF_RINGS = 3;
+    int                      NUMBER_OF_CYLINDERS = 3;
     int                      ringsFound      = 0;
+    int                      cylindersFound  = 0;
 
     void monitorNavigation() {
       // Monitor navigation until it reaches a terminal state
@@ -246,7 +250,7 @@ class Navigator {
     }
 
     static constexpr float SPIN_RATE        = 4;
-    static constexpr float SPIN_ANGULAR_VEL = 0.85;
+    static constexpr float SPIN_ANGULAR_VEL = 0.75;
     static constexpr float DEGREE_RATIO     = 29.75 / 360;
 
     void spin(float degrees) {
@@ -409,7 +413,7 @@ int main(int argc, char* argv[]) {
     {  2.6001322956085205,  -0.3131423993110657, true},
     {   3.067493640899658,  0.7811423993110657,  true},
     {  1.4856997728347778,  0.9578039050102234,  true},
-    {  1.0135111808776855,   2.656785011291504,  true},
+    {  2.3523111808776855,   2.510785011291504,  true},
     {-0.39255309104919434,  2.8976528644561768,  true},
     { -0.9696336388587952,  1.8396551609039307,  true},
     { -1.4852330684661865, 0.15332327783107758,  true},
@@ -419,7 +423,7 @@ int main(int argc, char* argv[]) {
   ros::Publisher cmdvelPub = nh.advertise<geometry_msgs::Twist>("/cmd_vel_mux/input/navi", 10);
 
   // Initialize Navigator
-  navigator = new Navigator(&cmdvelPub, 4);
+  navigator = new Navigator(&cmdvelPub, 4, 4);
 
   // Initialize ring detection subscribers
   ros::Subscriber greenRingSub = nh.subscribe(

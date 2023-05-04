@@ -8,6 +8,6 @@ move_base:
  # We need this so the robot can approach walls closer when parking
  global_costmap:
   inflation_layer:
-   cost_scaling_factor: 9
-   inflation_radius: 0.099
-  robot_radius: 0.165
+   cost_scaling_factor: 8
+   inflation_radius: 0.095
+  robot_radius: 0.178
