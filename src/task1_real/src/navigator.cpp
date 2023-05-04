@@ -102,7 +102,7 @@ class Navigator {
       // navigateTo(face_point);
 
       ROS_INFO("[Navigator] Playing sound");
-      soundClient->say("Hello mate! Howdy?");
+      soundClient->say("Face detected");
       ros::Duration(3.0).sleep();
     }
 
@@ -316,11 +316,12 @@ int main(int argc, char* argv[]) {
 
   // Vector of interest points in the map
   vector<NavigatorPoint> interestPoints {
-    {  0.5320780873298645,  0.585168182849884, true},
-    {-0.11156842857599258, 1.4531691074371338, true},
-    {  0.7117069363594055, 1.5773303508758545, true},
-    {  1.7376290559768677,  2.318873405456543, true},
-    {   2.043026924133301, 0.9556949734687805, true},
+    {-0.47311145067214966,  1.4272013902664185, true},
+    {  0.8058750629425049,  1.5380256175994873, true},
+    {  1.7123442888259888,   2.428035020828247, true},
+    {  2.0477283000946045,  0.8725169897079468, true},
+    {0.002332820789888501, 0.08606860041618347, true},
+    {  0.6204577684402466, 0.24852582812309265, true},
   };
 
   // Initialize publisher for robot rotation
