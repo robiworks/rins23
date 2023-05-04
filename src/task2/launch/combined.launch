@@ -10,10 +10,4 @@
 
   <!-- roslaunch sound_play soundplay_node.launch -->
   <include file="$(find sound_play)/soundplay_node.launch" />
-
-  <!-- roslaunch task2 circles.launch -->
-  <include file="$(find task2)/launch/circles.launch" />
-
-  <!-- Include the clustering Python script -->
-  <!-- <node pkg="task2" type="clustering.py" name="clustering_node" output="screen" /> -->
 </launch>

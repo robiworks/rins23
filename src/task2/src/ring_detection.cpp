@@ -85,7 +85,7 @@ void getDepths(
 
     float distance = accumulator / count;
 
-    if (distance < 0.1 || distance > 2)
+    if (distance < 0.1 || distance > 5)
       return;
 
     pose.color.r /= count;
@@ -169,12 +169,12 @@ std::vector<cv::Vec4f> detectCircles(cv::Mat input_img, cv::Mat output_img) {
   std::vector<cv::Vec4f> circles, validCircles;
 
   // Arugments for hough transform
-  int   minRadius            = 10;
+  int   minRadius            = 1;
   int   maxRadius            = 200;
   int   minDist              = 100;
   float imageScale           = 2;
-  int   cannyThreshold       = 100;
-  int   accumulatorThreshold = 75;
+  int   cannyThreshold       = 80;
+  int   accumulatorThreshold = 70;
 
   int centerThreshold = 100;
 
