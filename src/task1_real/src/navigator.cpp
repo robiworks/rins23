@@ -83,10 +83,6 @@ class Navigator {
 
       // Start monitoring navigation
       monitorNavigation();
-
-      if (point.spin) {
-        spin(360.0);
-      }
     }
 
     // Navigate through a list (vector) of points
@@ -102,22 +98,12 @@ class Navigator {
     void facePositionCallback(const task1::FacePositionMessageConstPtr &msg) {
       ROS_INFO("[Navigator] Face position message received");
       ROS_INFO("[Navigator] Face position: (x: %f, y: %f)", msg->x, msg->y);
-      NavigatorPoint face_point = {msg->x, msg->y, false};
-      navigateTo(face_point);
-    }
-
-    // Callback to handle /move_base/cancel
-    void cancelCallback(const actionlib_msgs::GoalIDConstPtr &msg) {
-      ROS_WARN("[Navigator] Received request to cancel navigation, goal ID: %s", msg->id.c_str());
-      // client->cancelGoal();
+      NavigatorPoint face_point = { msg->x, msg->y, false };
+      // navigateTo(face_point);
 
       ROS_INFO("[Navigator] Playing sound");
-      soundClient->say("New face detected!");
+      soundClient->say("Hello mate! Howdy?");
       ros::Duration(3.0).sleep();
-
-      // Continue navigation after receiving cancel
-      // The navigation goal is kept even after cancel so this is not required
-      // navigateTo(currentGoal);
     }
 
     // Clean up (used on SIGINT)
@@ -184,6 +170,13 @@ class Navigator {
         // The action server successfully completed the goal
         case actionlib::SimpleClientGoalState::SUCCEEDED:
           ROS_INFO("[Navigator] Successfully completed goal!");
+
+          // Spin 360 degrees if the interest points wants us to do so
+          if (currentGoal.spin) {
+            ROS_INFO("[Navigator] Spinning 360 degrees");
+            spin(360.0);
+          }
+
           break;
         // The client lost contact with the action server
         case actionlib::SimpleClientGoalState::LOST:
@@ -194,7 +187,7 @@ class Navigator {
     }
 
     static constexpr float SPIN_RATE        = 4;
-    static constexpr float SPIN_ANGULAR_VEL = 0.85;
+    static constexpr float SPIN_ANGULAR_VEL = 0.2;
     static constexpr float DEGREE_RATIO     = 29.75 / 360;
 
     void spin(float degrees) {
@@ -323,17 +316,11 @@ int main(int argc, char* argv[]) {
 
   // Vector of interest points in the map
   vector<NavigatorPoint> interestPoints {
-    {  -0.9712396264076233,  0.3039016127586365, true},
-    {    -0.81903076171875,  1.5590908527374268, true},
-    {  0.07623038440942764,   2.691239356994629, true},
-    {   2.1217899322509766,  2.7076127529144287, true},
-    {   2.5573792457580566,  1.3039171695709229, true},
-    {    1.286680817604065,  0.5794230103492737, true},
-    {    3.354393482208252, 0.27303266525268555, true},
-    {    3.716524362564087, -0.4115545153617859, true},
-    {   2.0537025928497314,  -1.007872462272644, true},
-    {0.0010448374086990952,  -1.046779990196228, true},
-    {  -0.1095728874206543, -1.1081676483154297, true},
+    {  0.5320780873298645,  0.585168182849884, true},
+    {-0.11156842857599258, 1.4531691074371338, true},
+    {  0.7117069363594055, 1.5773303508758545, true},
+    {  1.7376290559768677,  2.318873405456543, true},
+    {   2.043026924133301, 0.9556949734687805, true},
   };
 
   // Initialize publisher for robot rotation
@@ -342,16 +329,16 @@ int main(int argc, char* argv[]) {
   // Initialize Navigator
   navigator = new Navigator(&cmdvelPub);
 
-  // Initialize cancel subscriber
-  ros::Subscriber cancelSub =
-      nh.subscribe("/move_base/cancel", 1, &Navigator::cancelCallback, navigator);
-
   // Initialize the subscriber for the face detection
-  ros::Subscriber facePosSub = 
-      nh.subscribe("/custom_msgs/face_position_message", 10, &Navigator::facePositionCallback, navigator);
+  ros::Subscriber facePosSub = nh.subscribe(
+      "/custom_msgs/face_position_message",
+      10,
+      &Navigator::facePositionCallback,
+      navigator
+  );
 
   // Navigate through interest points
-  //navigator->navigateList(interestPoints);    
+  navigator->navigateList(interestPoints);
   // spin
-  ros::spin();
+  // ros::spin();
 }
