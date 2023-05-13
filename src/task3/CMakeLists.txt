@@ -4,24 +4,56 @@ project(task3)
 ## Compile as C++11, supported in ROS Kinetic and newer
 # add_compile_options(-std=c++11)
 
+## Find system dependencies
+find_package(Boost REQUIRED COMPONENTS system filesystem thread)
+find_package(Eigen3 REQUIRED)
+find_package(PCL REQUIRED)
+find_package(OpenCV REQUIRED)
+
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
   cv_bridge
   dynamic_reconfigure
-  eigen
-  message_generation
-  message_runtime
+  genmsg
+  nodelet
+  nodelet_topic_tools
   pcl_conversions
   pcl_msgs
-  pcl_ros
+  pluginlib
+  rosbag
+  rosconsole
   roscpp
   rospy
+  roslib
   sensor_msgs
   std_msgs
+  geometry_msgs
+  tf2
+  tf2_ros
   tf2_geometry_msgs
+  message_generation
 )
+
+## Add include directories
+include_directories(
+  ${catkin_INCLUDE_DIRS}
+  ${OpenCV_INCLUDE_DIRS}
+	${Boost_INCLUDE_DIRS}
+  ${Eigen_INCLUDE_DIRS}
+  ${PCL_INCLUDE_DIRS}
+)
+
+## Add link directories
+link_directories(
+  ${Boost_LIBRARY_DIRS}
+  ${Eigen_LIBRARY_DIRS}
+  ${PCL_LIBRARY_DIRS}
+  ${catkin_LIBRARY_DIRS}
+)
+
+link_libraries(${Boost_LIBRARIES} ${catkin_LIBRARIES} ${PCL_LIBRARIES})
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
@@ -214,3 +246,7 @@ include_directories(
 
 ## Add folders to be run by python nosetests
 # catkin_add_nosetests(test)
+
+if(NOT CMAKE_CXX_FLAGS)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra")
+endif()
