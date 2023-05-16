@@ -38,17 +38,23 @@ FACE_HEIGHT = 120
 FACE_WIDTH = 90
 
 POSTER_WORDS = ["WAN", "TED", "WANT", "WA", "NT"]
+RING_INDICATORS = {
+    "blue": ["BL", "UE", "LU"],
+    "green": ["GR", "EE", "EN", "RE"],
+}
 
 ### RUN  ###
 # roslaunch task1 combined.launch
 # rosrun task1 map_goals
 # rosrun task1 face_localizer_dnn
 
+
 @dataclass
 class FacePositionArrayDto:
     def __init__(self, fpm: FacePositionMessage, ros_time: rospy.Time):
         self.fpm: FacePositionMessage = fpm
         self.ros_time: rospy.Time = ros_time
+
 
 @dataclass
 class FacePositionsHolder:
@@ -76,6 +82,7 @@ class FacePositionsHolder:
 
         self.face_positions.append(FacePositionArrayDto(fpm, ros_time))
         return True
+
 
 @dataclass
 class Face:
@@ -130,12 +137,12 @@ class FaceDescriptors:
                 print(f"[-] Face already known, norm: {norm}")
                 return False
             else:
-                if np.abs(face.pose.position.x - fdf.pose.position.x) < 0.11 or np.abs(
-                    face.pose.position.y - fdf.pose.position.y
-                ) < 0.11:
+                if (
+                    np.abs(face.pose.position.x - fdf.pose.position.x) < 0.11
+                    or np.abs(face.pose.position.y - fdf.pose.position.y) < 0.11
+                ):
                     print(f"[-] Face already known, norm: {norm}: Too close point")
                     return False
-
 
         print("[+] New face detected!")
         self.faces_with_descriptors.append(fdf)
@@ -182,27 +189,142 @@ class face_localizer:
         # An object we use for converting images between ROS format and OpenCV format
         self.bridge = CvBridge()
 
-        self.face_coords_pub = rospy.Publisher(
-            "/msg/coords/", PointStamped, queue_size=10
-        )
-
-        self.custom_msgs_face_position_publisher = rospy.Publisher(
-                "/custom_msgs/face_position_message",
-                FacePositionMessage,
-                queue_size=10,
-        )
-
         self.dims = (0, 0, 0)
         self.log_dir = "/tmp/face_localizer_log"
         self.timestamp = datetime.datetime.now().isoformat()
 
-        ## Object we use for transforming between coordinate frames
         self.tf_buf = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buf)
 
         self.face_descriptors = FaceDescriptors()
 
         self.face_positions_holder = FacePositionsHolder()
+
+        ###            ###
+        ### PUBLISHERS ###
+        ###            ###
+
+        self.face_coords_pub = rospy.Publisher(
+            "/msg/coords/", PointStamped, queue_size=10
+        )
+
+        self.custom_msgs_face_detected = rospy.Publisher(
+            "/custom_msgs/face_detected",
+            FacePositionMessage,
+            queue_size=10,
+        )
+
+        self.custom_msgs_poster_detected = rospy.Publisher(
+            "/custom_msgs/poster_detected",
+            FacePositionMessage,
+            queue_size=10,
+        )
+
+        ###             ###
+        ### SUBSCRIBERS ###
+        ###             ###
+
+        self.custom_msgs_face_approached = rospy.Subscriber(
+            "/custom_msgs/face_approached",
+            FacePositionMessage,
+            self.face_approached_callback,
+            queue_size=10,
+        )
+
+        self.custom_msgs_poster_approached = rospy.Subscriber(
+            "/custom_msgs/poster_approached",
+            FacePositionMessage,
+            self.poster_approached_callback,
+            queue_size=10,
+        )
+
+    def face_approached_callback(self, msg):
+        pass
+
+    def poster_approached_callback(self, msg):
+        pass
+
+    def analyze_poster(self):
+        prices = []
+        ring_votes = {"blue": 0, "green": 0}
+
+        for i in range(3):
+            try:
+                rgb_image_message = rospy.wait_for_message(
+                    "/camera/rgb/image_raw/", Image
+                )
+            except Exception as e:
+                print(e)
+                return 0
+
+            try:
+                depth_image_message = rospy.wait_for_message(
+                    "/camera/depth/image_raw/", Image
+                )
+            except Exception as e:
+                print(e)
+                return 0
+
+            try:
+                rgb_image = self.bridge.imgmsg_to_cv2(rgb_image_message, "bgr8")
+            except CvBridgeError as e:
+                print(e)
+
+            hsv_image = cv2.cvtColor(rgb_image, cv2.COLOR_BGR2HSV)
+            hsv_image[:, :, 2] = cv2.equalizeHist(hsv_image[:, :, 2])
+            rgb_image = cv2.cvtColor(hsv_image, cv2.COLOR_HSV2RGB)
+            rgb_image = PILImage.fromarray(rgb_image)
+            rgb_image = np.array(rgb_image)
+
+            ocr_result = self.ocr_image(rgb_image)
+
+            print(ocr_result)
+
+            if ocr_result is None:
+                print("[-] No text detected")
+
+            for word in ocr_result:
+                if "BTC" in word:
+                    print("[+] BTC detected")
+                    word = word.replace("BTC", "")
+                    word = word.replace(" ", "")
+                    word = word.strip()
+                    # Try to convert it into integer
+                    print(word)
+                    try:
+                        wint = int(word)
+                    except:
+                        print("[-] Failed to convert to int")
+                        continue
+                    prices.append(wint)
+
+                br = RING_INDICATORS["blue"]
+                for w in br:
+                    if w in word:
+                        ring_votes["blue"] += 1
+
+                gr = RING_INDICATORS["green"]
+
+                for w in gr:
+                    if w in word:
+                        ring_votes["green"] += 1
+
+        if len(prices) == 0:
+            print("[-] No prices detected")
+        else:
+            most_common_price = max(set(prices), key=prices.count)
+
+            print("[+] Most common price: {}".format(most_common_price))
+
+        votes_blue = ring_votes["blue"]
+        votes_green = ring_votes["green"]
+
+        if votes_blue > votes_green:
+            print("[+] Blue ring detected")
+        elif votes_green > votes_blue:
+            print("[+] Green ring detected")
+        else:
+            print("[-] No ring detected")
 
     def get_pose(self, coords, dist, stamp, return_angle=False):
         """Calculate the position of the detected face"""
@@ -266,7 +388,6 @@ class face_localizer:
 
         return False
 
-
     def find_faces(self):
         try:
             rgb_image_message = rospy.wait_for_message("/camera/rgb/image_raw/", Image)
@@ -293,12 +414,6 @@ class face_localizer:
             print(e)
 
         self.dims = rgb_image.shape
-        #print(self.dims)
-
-        #rgb_image = cv2.cvtColor(rgb_image, cv2.COLOR_BGR2RGB)
-        #upper_limit = 40 
-        #rgb_image = rgb_image[upper_limit:, :, :]
-        #rgb_image = PILImage.fromarray(rgb_image)
 
         # Convert the image to the HSV color space
         hsv_image = cv2.cvtColor(rgb_image, cv2.COLOR_BGR2HSV)
@@ -309,11 +424,7 @@ class face_localizer:
         # Convert image to rgb
         rgb_image = cv2.cvtColor(hsv_image, cv2.COLOR_HSV2RGB)
 
-        # Convert the image to PIL format
         rgb_image = PILImage.fromarray(rgb_image)
-        #import matplotlib.pyplot as plt
-        #plt.imshow(rgb_image)
-        #plt.show()
 
         # Detect faces and extract descriptors
         with torch.no_grad():
@@ -342,7 +453,12 @@ class face_localizer:
                 continue
 
             # Face is either to close or too far away
-            if face_distance < 0.5 or face_distance > 1.2 or face_distance == 0.0 or np.isnan(face_distance):
+            if (
+                face_distance < 0.5
+                or face_distance > 1.2
+                or face_distance == 0.0
+                or np.isnan(face_distance)
+            ):
                 print(f"Face with distance {face_distance} is too close or too far")
                 continue
 
@@ -358,31 +474,35 @@ class face_localizer:
             )
 
             # Save the detected_face
-            #import time
-            #print("[~] Saving face")
-            #print(f"/tmp/{time.time()}.jpg")
-            #cv2.imwrite(f"/tmp/{time.time()}.jpg", np.array(rgb_image))
+            # import time
+            # print("[~] Saving face")
+            # print(f"/tmp/{time.time()}.jpg")
+            # cv2.imwrite(f"/tmp/{time.time()}.jpg", np.array(rgb_image))
 
             fdf = Face(box, face_distance, depth_time, pose)
             fdf.describe(face_descriptor)
 
             if self.face_descriptors.add_descriptor(fdf):
-                self.report_close_face(face_distance, box, depth_time)
-                result = self.check_if_face_is_on_poster(rgb_image)
-                if result:
+                is_poster = self.check_if_face_is_on_poster(rgb_image)
+                if is_poster:
                     print("[~] Face is on the poster")
                 else:
                     print("[~] Face is not on the poster")
                 print("[~] Face added to the database")
+                self.report_close_face(face_distance, box, depth_time, is_poster)
+
+                # Save the image of detected face
                 cv2.imwrite(f"/tmp/rins_{time.time()}.jpg", np.array(rgb_image))
                 print("[+] Face saved")
 
-    def report_close_face(self, face_distance, box, depth_time):
+    def report_close_face(self, face_distance, box, depth_time, is_poster):
         x1, y1, x2, y2 = box
         x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
 
         # Get the pose of the face
-        pose, angle = self.get_pose((x1, x2, y1, y2), face_distance * 0.95, depth_time, return_angle=True)
+        pose, angle = self.get_pose(
+            (x1, x2, y1, y2), face_distance * 0.95, depth_time, return_angle=True
+        )
         if pose is None:
             return
         fpm = FacePositionMessage()
@@ -391,9 +511,12 @@ class face_localizer:
         fpm.z = pose.position.z
         fpm.angle = angle
 
-        print(fpm)
+        if is_poster:
+            self.custom_msgs_poster_detected.publish(fpm)
+        else:
+            self.custom_msgs_face_detected.publish(fpm)
 
-        self.custom_msgs_face_position_publisher.publish(fpm)
+        print(fpm)
 
 
 def main():
