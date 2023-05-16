@@ -49,6 +49,8 @@ add_message_files(
   FILES
   RingPoseMsg.msg
   ColorMsg.msg
+  PosterContentMsg.msg
+  FacePositionMsg.msg
 )
 
 generate_messages(

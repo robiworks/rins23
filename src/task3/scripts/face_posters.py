@@ -25,7 +25,7 @@ from actionlib_msgs.msg import GoalID
 import torch
 from facenet_pytorch import MTCNN, InceptionResnetV1
 from torchvision.transforms import ToTensor
-from task1.msg import FacePositionMessage
+from task3.msg import FacePositionMsg, PosterContentMsg
 
 import easyocr
 
@@ -51,8 +51,8 @@ RING_INDICATORS = {
 
 @dataclass
 class FacePositionArrayDto:
-    def __init__(self, fpm: FacePositionMessage, ros_time: rospy.Time):
-        self.fpm: FacePositionMessage = fpm
+    def __init__(self, fpm: FacePositionMsg, ros_time: rospy.Time):
+        self.fpm: FacePositionMsg = fpm
         self.ros_time: rospy.Time = ros_time
 
 
@@ -63,7 +63,7 @@ class FacePositionsHolder:
         self.tol = 0.2
         self.time_tol = 5
 
-    def add_face_position(self, fpm: FacePositionMessage, ros_time: rospy.Time) -> bool:
+    def add_face_position(self, fpm: FacePositionMsg, ros_time: rospy.Time) -> bool:
         def check_fpm(fpm1, fpm2) -> bool:
             return (
                 abs(fpm1.x - fpm2.x) < self.tol
@@ -210,13 +210,19 @@ class face_localizer:
 
         self.custom_msgs_face_detected = rospy.Publisher(
             "/custom_msgs/face_detected",
-            FacePositionMessage,
+            FacePositionMsg,
             queue_size=10,
         )
 
         self.custom_msgs_poster_detected = rospy.Publisher(
             "/custom_msgs/poster_detected",
-            FacePositionMessage,
+            FacePositionMsg,
+            queue_size=10,
+        )
+
+        self.custom_msgs_poster_analyzed = rospy.Publisher(
+            "/custom_msgs/poster_exploration_done",
+            PosterContentMsg,
             queue_size=10,
         )
 
@@ -226,14 +232,14 @@ class face_localizer:
 
         self.custom_msgs_face_approached = rospy.Subscriber(
             "/custom_msgs/face_approached",
-            FacePositionMessage,
+            FacePositionMsg,
             self.face_approached_callback,
             queue_size=10,
         )
 
         self.custom_msgs_poster_approached = rospy.Subscriber(
             "/custom_msgs/poster_approached",
-            FacePositionMessage,
+            FacePositionMsg,
             self.poster_approached_callback,
             queue_size=10,
         )
@@ -242,10 +248,10 @@ class face_localizer:
         pass
 
     def poster_approached_callback(self, msg):
-        pass
+        self.analyze_poster()
 
     def analyze_poster(self):
-        prices = []
+        prizes = []
         ring_votes = {"blue": 0, "green": 0}
 
         for i in range(3):
@@ -296,7 +302,7 @@ class face_localizer:
                     except:
                         print("[-] Failed to convert to int")
                         continue
-                    prices.append(wint)
+                    prizes.append(wint)
 
                 br = RING_INDICATORS["blue"]
                 for w in br:
@@ -309,22 +315,30 @@ class face_localizer:
                     if w in word:
                         ring_votes["green"] += 1
 
-        if len(prices) == 0:
-            print("[-] No prices detected")
+        if len(prizes) == 0:
+            print("[-] No prizes detected")
         else:
-            most_common_price = max(set(prices), key=prices.count)
+            most_common_price = max(set(prizes), key=prizes.count)
 
-            print("[+] Most common price: {}".format(most_common_price))
+            print("[+] Most common prize: {}".format(most_common_price))
 
         votes_blue = ring_votes["blue"]
         votes_green = ring_votes["green"]
 
+        ring = ""
+
         if votes_blue > votes_green:
             print("[+] Blue ring detected")
+            ring = "blue"
         elif votes_green > votes_blue:
             print("[+] Green ring detected")
+            ring = "green"
         else:
             print("[-] No ring detected")
+
+        msg = PosterContentMsg()
+        msg.prize = most_common_price
+        msg.ring_color = ring
 
     def get_pose(self, coords, dist, stamp, return_angle=False):
         """Calculate the position of the detected face"""
@@ -505,7 +519,7 @@ class face_localizer:
         )
         if pose is None:
             return
-        fpm = FacePositionMessage()
+        fpm = FacePositionMsg()
         fpm.x = pose.position.x
         fpm.y = pose.position.y
         fpm.z = pose.position.z
