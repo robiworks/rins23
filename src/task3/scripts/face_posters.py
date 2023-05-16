@@ -48,6 +48,8 @@ RING_INDICATORS = {
 # rosrun task1 map_goals
 # rosrun task1 face_localizer_dnn
 
+# Handlanje arm slike pazi
+
 
 @dataclass
 class FacePositionArrayDto:
@@ -98,9 +100,6 @@ class Face:
     def describe(self, descriptor):
         self.descriptor = descriptor
 
-    def add_marker(self, marker):
-        self.marker = marker
-
     def add_pose(self, pose):
         self.poses.append(pose)
         poses_m = [
@@ -109,7 +108,6 @@ class Face:
         self.pose.position.x, self.pose.position.y, self.pose.position.z = np.mean(
             poses_m, axis=0
         )
-        self.marker.pose = self.pose
 
 
 class FaceDescriptors:
@@ -117,11 +115,6 @@ class FaceDescriptors:
         self.faces_with_descriptors = []
         self.cancel_id = 0
         self.marker_id = 0
-        self.markers_pub = rospy.Publisher("face_markers", MarkerArray, queue_size=1000)
-        self.goal_cancel_pub = rospy.Publisher(
-            "/move_base/cancel", GoalID, queue_size=10
-        )
-        self.marker_array = MarkerArray()
 
     def hellinger_distance(self, a, b):
         return np.sqrt(
@@ -144,33 +137,8 @@ class FaceDescriptors:
                     print(f"[-] Face already known, norm: {norm}: Too close point")
                     return False
 
-        print("[+] New face detected!")
         self.faces_with_descriptors.append(fdf)
-        marker = self.report_new_face_and_stop_the_robot()
-        fdf.add_marker(marker)
         return True
-
-    def report_new_face_and_stop_the_robot(self) -> Marker:
-        new_face = self.faces_with_descriptors[-1]
-
-        # Report the new Face
-        self.marker_id += 1
-        marker = Marker()
-        marker.header.stamp = rospy.Time.now()
-        marker.header.frame_id = "map"
-        marker.pose = new_face.pose
-        marker.type = marker.CUBE
-        marker.action = marker.ADD
-        marker.frame_locked = False
-        marker.lifetime = rospy.Duration.from_sec(MARKER_DURATION)
-        marker.id = self.marker_id
-        marker.scale = Vector3(0.1, 0.1, 0.1)
-        marker.color = ColorRGBA(0, 1, 0, 1)
-        self.marker_array.markers.append(marker)
-        # Publish the marker
-        self.markers_pub.publish(self.marker_array)
-
-        return marker
 
 
 class face_localizer:
@@ -197,8 +165,8 @@ class face_localizer:
         self.tf_listener = tf2_ros.TransformListener(self.tf_buf)
 
         self.face_descriptors = FaceDescriptors()
-
-        self.face_positions_holder = FacePositionsHolder()
+        self.poster_descriptors = FaceDescriptors()
+        self.arm_face_descriptors = FaceDescriptors()
 
         ###            ###
         ### PUBLISHERS ###
@@ -258,14 +226,6 @@ class face_localizer:
             try:
                 rgb_image_message = rospy.wait_for_message(
                     "/camera/rgb/image_raw/", Image
-                )
-            except Exception as e:
-                print(e)
-                return 0
-
-            try:
-                depth_image_message = rospy.wait_for_message(
-                    "/camera/depth/image_raw/", Image
                 )
             except Exception as e:
                 print(e)
@@ -339,6 +299,20 @@ class face_localizer:
         msg = PosterContentMsg()
         msg.prize = most_common_price
         msg.ring_color = ring
+        descriptors = self.detect_faces()
+        for (
+            face_descriptor,
+            fdf,
+            rgb_image,
+            face_distance,
+            box,
+            depth_time,
+        ) in descriptors:
+            fdf.poster_content = msg
+            if(self.poster_descriptors.add_descriptor(face_descriptor, fdf)):
+                self.custom_msgs_poster_detected.publish(fdf)
+            else:
+                print("[-] Poster already detected")
 
     def get_pose(self, coords, dist, stamp, return_angle=False):
         """Calculate the position of the detected face"""
@@ -402,7 +376,8 @@ class face_localizer:
 
         return False
 
-    def find_faces(self):
+    def detect_faces(self):
+        descriptors = []
         try:
             rgb_image_message = rospy.wait_for_message("/camera/rgb/image_raw/", Image)
         except Exception as e:
@@ -487,18 +462,29 @@ class face_localizer:
                 self.resnet(face.to(self.device).unsqueeze(0)).cpu().detach().numpy()
             )
 
-            # Save the detected_face
-            # import time
-            # print("[~] Saving face")
-            # print(f"/tmp/{time.time()}.jpg")
-            # cv2.imwrite(f"/tmp/{time.time()}.jpg", np.array(rgb_image))
-
             fdf = Face(box, face_distance, depth_time, pose)
             fdf.describe(face_descriptor)
+            descriptors.append(
+                (face_descriptor, fdf, rgb_image, face_distance, box, depth_time)
+            )
 
+        return descriptors
+
+    def find_faces(self):
+        descriptors = self.detect_faces()
+        for (
+            face_descriptor,
+            fdf,
+            rgb_image,
+            face_distance,
+            box,
+            depth_time,
+        ) in descriptors:
             if self.face_descriptors.add_descriptor(fdf):
+                print("[+] New Face added to the database")
                 is_poster = self.check_if_face_is_on_poster(rgb_image)
                 if is_poster:
+                    self.poster_descriptors.add_descriptor(fdf)
                     print("[~] Face is on the poster")
                 else:
                     print("[~] Face is not on the poster")
