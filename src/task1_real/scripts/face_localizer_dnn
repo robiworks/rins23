@@ -30,7 +30,7 @@ from task1.msg import FacePositionMessage
 
 ### PARAMETERS ###
 MARKER_DURATION = 360
-FACE_DIFF_THRESHOLD = 0.7
+FACE_DIFF_THRESHOLD = 0.5
 NUM_POINTS = 8
 RADIUS = 3
 FACE_HEIGHT = 120
@@ -120,12 +120,21 @@ class FaceDescriptors:
 
     def add_descriptor(self, fdf: Face) -> bool:
         # Check if the description is already in the list or something similar
+        print(f"Chcecking if the face is already known {fdf}")
+        print(fdf.pose)
         for face in self.faces_with_descriptors:
             norm = self.hellinger_distance(face.descriptor, fdf.descriptor)
             if norm < FACE_DIFF_THRESHOLD:
                 face.add_pose(fdf.pose)
                 print(f"[-] Face already known, norm: {norm}")
                 return False
+            else:
+                if np.abs(face.pose.position.x - fdf.pose.position.x) < 0.11 or np.abs(
+                    face.pose.position.y - fdf.pose.position.y
+                ) < 0.11:
+                    print(f"[-] Face already known, norm: {norm}: Too close point")
+                    return False
+
 
         print("[+] New face detected!")
         self.faces_with_descriptors.append(fdf)
@@ -135,14 +144,6 @@ class FaceDescriptors:
 
     def report_new_face_and_stop_the_robot(self) -> Marker:
         new_face = self.faces_with_descriptors[-1]
-
-        # Cancel the current goal
-        self.cancel_id += 1
-        cancel_msg = GoalID()
-        cancel_msg.id = str(self.cancel_id)
-        cancel_msg.stamp = rospy.Time.now()
-        # Publish the cancel message
-        self.goal_cancel_pub.publish(cancel_msg)
 
         # Report the new Face
         self.marker_id += 1
@@ -244,14 +245,14 @@ class face_localizer:
 
     def find_faces(self):
         try:
-            rgb_image_message = rospy.wait_for_message("/camera/rgb/image_raw", Image)
+            rgb_image_message = rospy.wait_for_message("/camera/rgb/image_raw/", Image)
         except Exception as e:
             print(e)
             return 0
 
         try:
             depth_image_message = rospy.wait_for_message(
-                "/camera/depth/image_raw", Image
+                "/camera/depth/image_raw/", Image
             )
         except Exception as e:
             print(e)
@@ -270,8 +271,10 @@ class face_localizer:
         self.dims = rgb_image.shape
 
         rgb_image = cv2.cvtColor(rgb_image, cv2.COLOR_BGR2RGB)
-        print(rgb_image.shape)
-        rgb_image = rgb_image[120:, 20:, :]
+        upper_limit = 140
+        lr_limit = 40
+        rgb_image = rgb_image[upper_limit:, lr_limit:, :]
+        rgb_image = rgb_image[:, :rgb_image.shape[1] - lr_limit, :]
         rgb_image = PILImage.fromarray(rgb_image)
 
         # Detect faces and extract descriptors
@@ -301,11 +304,9 @@ class face_localizer:
                 continue
 
             # Face is either to close or too far away
-            if face_distance < 0.5 or face_distance > 0.8 or face_distance == 0.0 or np.isnan(face_distance):
+            if face_distance < 0.4 or face_distance > 0.7 or face_distance == 0.0 or np.isnan(face_distance):
                 print(f"Face with distance {face_distance} is too close or too far")
                 continue
-
-            self.report_close_face(face_distance, box, depth_time)
 
             print("[~] face distance:", face_distance)
 
@@ -326,7 +327,9 @@ class face_localizer:
 
             fdf = Face(box, face_distance, depth_time, pose)
             fdf.describe(face_descriptor)
-            self.face_descriptors.add_descriptor(fdf)
+
+            if self.face_descriptors.add_descriptor(fdf):
+                self.report_close_face(face_distance, box, depth_time)
 
     def report_close_face(self, face_distance, box, depth_time):
         x1, y1, x2, y2 = box
@@ -342,8 +345,7 @@ class face_localizer:
         fpm.z = pose.position.z
         fpm.angle = angle
 
-        if self.face_positions_holder.add_face_position(fpm, rospy.Time.now()):
-            self.custom_msgs_face_position_publisher.publish(fpm)
+        self.custom_msgs_face_position_publisher.publish(fpm)
 
 
 def main():
