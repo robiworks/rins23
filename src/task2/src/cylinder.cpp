@@ -133,7 +133,6 @@ void cloud_cb(const pcl::PCLPointCloud2ConstPtr &cloud_blob) {
     //          << " " << centroid[2] << " " << centroid[3] << std::endl;
     geometry_msgs::PointStamped     point_camera;
     geometry_msgs::PointStamped     point_map;
-    visualization_msgs::Marker      marker;
     geometry_msgs::TransformStamped tss;
 
     point_camera.header.frame_id = "camera_rgb_optical_frame";
