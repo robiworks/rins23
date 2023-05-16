@@ -1,0 +1,12 @@
+<launch>
+    <node pkg="task3" type="task3_ring_detection" name="ring_detection" output="screen">
+        <param name="depth" type="string" value="/camera/depth/image_raw"/>
+        <param name="rgb" type="string" value="/camera/rgb/image_raw"/>
+        <param name="cam_info" type="string" value="normal"/>
+        <param name="debug" type="bool" value="false"/>
+    </node>
+
+    <node pkg="task3" type="task3_cylinder_detection" name="cylinder_detection" output="screen">
+    </node>
+</launch>
+
