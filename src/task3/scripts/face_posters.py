@@ -48,8 +48,6 @@ RING_INDICATORS = {
 # rosrun task1 map_goals
 # rosrun task1 face_localizer_dnn
 
-# Handlanje arm slike pazi
-
 
 @dataclass
 class FacePositionArrayDto:
@@ -254,6 +252,8 @@ class face_localizer:
                     print("[+] BTC detected")
                     word = word.replace("BTC", "")
                     word = word.replace(" ", "")
+                    word = word.replace("o", "0")
+                    word = word.replace("O", "0")
                     word = word.strip()
                     # Try to convert it into integer
                     print(word)
@@ -277,10 +277,11 @@ class face_localizer:
 
         if len(prizes) == 0:
             print("[-] No prizes detected")
+            most_common_prize = 0
         else:
-            most_common_price = max(set(prizes), key=prizes.count)
+            most_common_prize = max(set(prizes), key=prizes.count)
 
-            print("[+] Most common prize: {}".format(most_common_price))
+            print("[+] Most common prize: {}".format(most_common_prize))
 
         votes_blue = ring_votes["blue"]
         votes_green = ring_votes["green"]
@@ -296,8 +297,12 @@ class face_localizer:
         else:
             print("[-] No ring detected")
 
+        if ring == "" or most_common_prize == 0:
+            print("[-] Poster analysis failed")
+            return 11
+
         msg = PosterContentMsg()
-        msg.prize = most_common_price
+        msg.prize = most_common_prize
         msg.ring_color = ring
         descriptors = self.detect_faces()
         for (
@@ -309,10 +314,11 @@ class face_localizer:
             depth_time,
         ) in descriptors:
             fdf.poster_content = msg
-            if(self.poster_descriptors.add_descriptor(face_descriptor, fdf)):
-                self.custom_msgs_poster_detected.publish(fdf)
+            if self.poster_descriptors.add_descriptor(fdf):
+                print("[+] Poster recognition is done.")
+                self.custom_msgs_poster_analyzed.publish(msg)
             else:
-                print("[-] Poster already detected")
+                print("[-] Poster already detected.")
 
     def get_pose(self, coords, dist, stamp, return_angle=False):
         """Calculate the position of the detected face"""
@@ -464,6 +470,21 @@ class face_localizer:
 
             fdf = Face(box, face_distance, depth_time, pose)
             fdf.describe(face_descriptor)
+            if face_descriptor is None:
+                continue
+
+            if fdf is None:
+                continue
+
+            if face_distance is None or np.isnan(face_distance):
+                continue
+
+            if box is None:
+                continue
+
+            if depth_time is None:
+                continue
+
             descriptors.append(
                 (face_descriptor, fdf, rgb_image, face_distance, box, depth_time)
             )
@@ -472,6 +493,8 @@ class face_localizer:
 
     def find_faces(self):
         descriptors = self.detect_faces()
+        if descriptors is None:
+            return
         for (
             face_descriptor,
             fdf,
