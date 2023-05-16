@@ -30,7 +30,7 @@ from task1.msg import FacePositionMessage
 
 ### PARAMETERS ###
 MARKER_DURATION = 360
-FACE_DIFF_THRESHOLD = 0.6
+FACE_DIFF_THRESHOLD = 0.5
 NUM_POINTS = 8
 RADIUS = 3
 FACE_HEIGHT = 120
@@ -52,7 +52,7 @@ class FacePositionsHolder:
     def __init__(self):
         self.face_positions: FacePositionArrayDto = []
         self.tol = 0.2
-        self.time_tol = 5 # 2 seconds
+        self.time_tol = 5
 
     def add_face_position(self, fpm: FacePositionMessage, ros_time: rospy.Time) -> bool:
         def check_fpm(fpm1, fpm2) -> bool:
@@ -68,12 +68,8 @@ class FacePositionsHolder:
             return abs(time_diff_sec) < self.time_tol
 
         for face_position in self.face_positions:
-            #if check_fpm(face_position.fpm, fpm):
-            #    return False
             if check_time(face_position.ros_time, ros_time):
                 return False
-
-        print("NAVIGATING TO", fpm.x, fpm.y, fpm.z)
 
         self.face_positions.append(FacePositionArrayDto(fpm, ros_time))
         return True
@@ -124,12 +120,21 @@ class FaceDescriptors:
 
     def add_descriptor(self, fdf: Face) -> bool:
         # Check if the description is already in the list or something similar
+        print(f"Chcecking if the face is already known {fdf}")
+        print(fdf.pose)
         for face in self.faces_with_descriptors:
             norm = self.hellinger_distance(face.descriptor, fdf.descriptor)
             if norm < FACE_DIFF_THRESHOLD:
                 face.add_pose(fdf.pose)
                 print(f"[-] Face already known, norm: {norm}")
                 return False
+            else:
+                if np.abs(face.pose.position.x - fdf.pose.position.x) < 0.11 or np.abs(
+                    face.pose.position.y - fdf.pose.position.y
+                ) < 0.11:
+                    print(f"[-] Face already known, norm: {norm}: Too close point")
+                    return False
+
 
         print("[+] New face detected!")
         self.faces_with_descriptors.append(fdf)
@@ -139,14 +144,6 @@ class FaceDescriptors:
 
     def report_new_face_and_stop_the_robot(self) -> Marker:
         new_face = self.faces_with_descriptors[-1]
-
-        # Cancel the current goal
-        self.cancel_id += 1
-        cancel_msg = GoalID()
-        cancel_msg.id = str(self.cancel_id)
-        cancel_msg.stamp = rospy.Time.now()
-        # Publish the cancel message
-        self.goal_cancel_pub.publish(cancel_msg)
 
         # Report the new Face
         self.marker_id += 1
@@ -248,14 +245,14 @@ class face_localizer:
 
     def find_faces(self):
         try:
-            rgb_image_message = rospy.wait_for_message("/camera/rgb/image_raw", Image)
+            rgb_image_message = rospy.wait_for_message("/camera/rgb/image_raw/", Image)
         except Exception as e:
             print(e)
             return 0
 
         try:
             depth_image_message = rospy.wait_for_message(
-                "/camera/depth/image_raw", Image
+                "/camera/depth/image_raw/", Image
             )
         except Exception as e:
             print(e)
@@ -274,6 +271,10 @@ class face_localizer:
         self.dims = rgb_image.shape
 
         rgb_image = cv2.cvtColor(rgb_image, cv2.COLOR_BGR2RGB)
+        upper_limit = 140
+        lr_limit = 40
+        rgb_image = rgb_image[upper_limit:, lr_limit:, :]
+        rgb_image = rgb_image[:, :rgb_image.shape[1] - lr_limit, :]
         rgb_image = PILImage.fromarray(rgb_image)
 
         # Detect faces and extract descriptors
@@ -297,19 +298,14 @@ class face_localizer:
 
             # Get the distance to the face
             try:
-                face_distance = np.nanmedian(depth_image[y1:y2, x1:x2])
+                face_distance = np.nanmedian(depth_image[y1:y2, x1:x2]) / 1e3
                 # Ignore nan warnging
             except RuntimeWarning:
                 continue
 
-            if face_distance > 0.8 or face_distance < 0.5 or np.isnan(face_distance):
-                # Publish the coordinates to the /msg/coords/
-                # Create the PointStamped message
-                # Publish the message
-                if face_distance > 0.8 and face_distance < 2.2:
-                    self.report_close_face(face_distance, box, depth_time, "far_away")
-                elif face_distance < 0.5:
-                    self.report_close_face(face_distance, box, depth_time, "too_close")
+            # Face is either to close or too far away
+            if face_distance < 0.4 or face_distance > 0.7 or face_distance == 0.0 or np.isnan(face_distance):
+                print(f"Face with distance {face_distance} is too close or too far")
                 continue
 
             print("[~] face distance:", face_distance)
@@ -323,17 +319,24 @@ class face_localizer:
                 self.resnet(face.to(self.device).unsqueeze(0)).cpu().detach().numpy()
             )
 
+            # Save the detected_face
+            import time
+            print("[~] Saving face")
+            print(f"/tmp/{time.time()}.jpg")
+            cv2.imwrite(f"/tmp/{time.time()}.jpg", np.array(rgb_image))
+
             fdf = Face(box, face_distance, depth_time, pose)
             fdf.describe(face_descriptor)
-            self.face_descriptors.add_descriptor(fdf)
 
-    def report_close_face(self, face_distance, box, depth_time, close):
-        """this function is called when a face is detected close to the robot"""
+            if self.face_descriptors.add_descriptor(fdf):
+                self.report_close_face(face_distance, box, depth_time)
+
+    def report_close_face(self, face_distance, box, depth_time):
         x1, y1, x2, y2 = box
         x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
 
         # Get the pose of the face
-        pose, angle = self.get_pose((x1, x2, y1, y2), face_distance - (face_distance * 0.2), depth_time, return_angle=True)
+        pose, angle = self.get_pose((x1, x2, y1, y2), face_distance * 0.95, depth_time, return_angle=True)
         if pose is None:
             return
         fpm = FacePositionMessage()
@@ -342,10 +345,7 @@ class face_localizer:
         fpm.z = pose.position.z
         fpm.angle = angle
 
-        if self.face_positions_holder.add_face_position(fpm, rospy.Time.now()):
-            self.custom_msgs_face_position_publisher.publish(fpm)
-        else:
-            return
+        self.custom_msgs_face_position_publisher.publish(fpm)
 
 
 def main():
