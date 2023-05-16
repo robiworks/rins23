@@ -27,6 +27,8 @@ from facenet_pytorch import MTCNN, InceptionResnetV1
 from torchvision.transforms import ToTensor
 from task1.msg import FacePositionMessage
 
+import easyocr
+
 ### PARAMETERS ###
 MARKER_DURATION = 360
 FACE_DIFF_THRESHOLD = 0.5
@@ -34,6 +36,8 @@ NUM_POINTS = 8
 RADIUS = 3
 FACE_HEIGHT = 120
 FACE_WIDTH = 90
+
+POSTER_WORDS = ["WAN", "TED", "WANT", "WA", "NT"]
 
 ### RUN  ###
 # roslaunch task1 combined.launch
@@ -168,6 +172,7 @@ class face_localizer:
 
         # Initialize the models
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.use_gpu = True if torch.cuda.is_available() else False
         self.mtcnn = MTCNN(
             keep_all=True, device=self.device, post_process=False, margin=20
         )
@@ -238,6 +243,28 @@ class face_localizer:
             return pose, angle_to_target
         else:
             return pose
+
+    def ocr_image(self, image):
+        """OCR the image and return the text"""
+        reader = easyocr.Reader(["en"], gpu=self.use_gpu)
+        result = reader.readtext(image)
+
+        # Convert result into array of strings
+        result = [r[1] for r in result]
+
+        return result
+
+    def check_if_face_is_on_poster(self, rgb_image):
+        rgb_image = np.array(rgb_image)
+
+        ocr_res = self.ocr_image(rgb_image)
+
+        for word in ocr_res:
+            for poster_word in POSTER_WORDS:
+                if poster_word in word:
+                    return True
+
+        return False
 
 
     def find_faces(self):
@@ -341,6 +368,11 @@ class face_localizer:
 
             if self.face_descriptors.add_descriptor(fdf):
                 self.report_close_face(face_distance, box, depth_time)
+                result = self.check_if_face_is_on_poster(rgb_image)
+                if result:
+                    print("[~] Face is on the poster")
+                else:
+                    print("[~] Face is not on the poster")
                 print("[~] Face added to the database")
                 cv2.imwrite(f"/tmp/rins_{time.time()}.jpg", np.array(rgb_image))
                 print("[+] Face saved")
