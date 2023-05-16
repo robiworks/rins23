@@ -21,8 +21,6 @@ using namespace cv_bridge;
 typedef sync_policies::ApproximateTime<Image, Image> ApproxSync;
 
 ros::Publisher                  pose_pub;
-ros::Publisher                  marker_pub;
-visualization_msgs::MarkerArray marker_array;
 
 tf2_ros::Buffer*            tfBuffer   = NULL;
 tf2_ros::TransformListener* tfListener = NULL;
@@ -112,37 +110,6 @@ void getDepths(
     point.point.x         = -y_target;
     point.point.y         = 0;
     point.point.z         = x_target; //Try switching .y and .z
-
-    // Make a marker for the point
-    visualization_msgs::Marker marker;
-    marker.header.frame_id    = "camera_rgb_optical_frame";
-    marker.header.stamp       = depth_header.stamp;
-    marker.ns                 = "points_and_lines";
-    marker.id                 = rand();
-    marker.type               = visualization_msgs::Marker::SPHERE;
-    marker.action             = visualization_msgs::Marker::ADD;
-    marker.pose.position.x    = point.point.x;
-    marker.pose.position.y    = point.point.y;
-    marker.pose.position.z    = point.point.z;
-    marker.pose.orientation.x = 0.0;
-    marker.pose.orientation.y = 0.0;
-    marker.pose.orientation.z = 0.0;
-    marker.pose.orientation.w = 1.0;
-    marker.color.r            = pose.color.r / 255;
-    marker.color.g            = pose.color.g / 255;
-    marker.color.b            = pose.color.b / 255;
-    marker.color.a            = 1.0;
-    marker.scale.x            = 0.1;
-    marker.scale.y            = 0.1;
-    marker.scale.z            = 0.1;
-    marker.lifetime           = ros::Duration();
-
-    marker_array.markers.push_back(marker);
-
-    marker_pub.publish(marker_array);
-
-    // Print point stamped
-    // ROS_INFO("Point: %f, %f, %f", point.point.x, point.point.y, point.point.z);
 
     geometry_msgs::Pose pose_msg;
 
@@ -282,9 +249,6 @@ int main(int argc, char** argv) {
   // Create a ROS subscriber for rgb and depth images
   Subscriber<Image> rgb_sub(nh, rgb_topic, 1);
   Subscriber<Image> depth_sub(nh, depth_topic, 1);
-
-  // Create a marker publisher
-  marker_pub = nh.advertise<visualization_msgs::MarkerArray>("visualization_marker", 10000);
 
   // Create a ApproximateTimeSynchronizer to synchronize the rgb and depth images
   Synchronizer<ApproxSync> sync(ApproxSync(5), rgb_sub, depth_sub);

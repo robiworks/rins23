@@ -9,6 +9,9 @@ from task2.msg import RingPoseMsg, ColorMsg
 from collections import deque
 from typing import List
 from dataclasses import dataclass
+from visualization_msgs.msg import Marker, MarkerArray
+from std_msgs.msg import ColorRGBA
+from geometry_msgs.msg import Vector3
 
 RINGS_ON_POLYGON = {
     "Green": [0, 255, 0],
@@ -162,7 +165,11 @@ class Clustering:
     def __init__(self):
         rospy.init_node("ring_localizer", anonymous=True)
 
-        # Setup publishers
+        ###            ###
+        ### PUBLIHSERS ###
+        ###            ###
+
+        # RINGS
         self.green_ring_pub = rospy.Publisher(
             "/custom_msgs/nav/green_ring_detected", RingPoseMsg, queue_size=10
         )
@@ -170,10 +177,13 @@ class Clustering:
             "/custom_msgs/nav/ring_detected", RingPoseMsg, queue_size=10
         )
 
-        # self.color_pub = rospy.Publisher(
-        #     "/custom_msgs/sound/new_color", ColorMsg, queue_size=10
-        # )
+        self.ring_marker_pub = rospy.Publisher(
+            "/markers/ring", MarkerArray, queue_size=10
+        )
+        self.ring_marker_id = 0
+        self.ring_marker_array = MarkerArray()
 
+        # CYLINDERS
         self.cylinder_pub = rospy.Publisher(
             "/custom_msgs/nav/cylinder_detected", RingPoseMsg, queue_size=10
         )
@@ -182,11 +192,22 @@ class Clustering:
             "/custom_msgs/sound/new_cylinder_color", ColorMsg, queue_size=10
         )
 
-        # Setup subscribers
+        self.cylinder_marker_pub = rospy.Publisher(
+            "/markers/cylinder", MarkerArray, queue_size=10
+        )
+        self.cylinder_marker_id = 0
+        self.cylinder_marker_array = MarkerArray()
+
+        ###             ###
+        ### SUBSCRIBERS ###
+        ###             ###
+
+        # RINGS
         self.ring_detected_sub = rospy.Subscriber(
             "/custom_msgs/ring_detection", RingPoseMsg, self.ring_detetected_callback
         )
 
+        # CYLINDERS
         self.cylinder_detected_sub = rospy.Subscriber(
             "/custom_msgs/cylinder_detection",
             RingPoseMsg,
@@ -200,15 +221,45 @@ class Clustering:
         # Setup ring holder
         self.ring_holder = RingHolder()
 
-        # Setup differential localizer for cylinders
+        ###                      ###
+        ### CYLINDERS CLUSTERING ###
+        ###                      ###
+
         self.cylinder_differnatial_localizer = DBSCANClustering(
             color="cylinder",
             input_vector_size=3,
             do_reverse_lookup=False,
             num_features=3,
         )
+
         # Setup cylinder holder
         self.cylinder_holder = RingHolder()
+
+        self.marker_duration = rospy.Duration.from_sec(3600)
+
+    def publish_cylinder_marker(self, cylinder: RingPoseMsg):
+        self.cylinder_marker_id += 1
+
+        r, g, b = (
+            cylinder.color.r / 255.0,
+            cylinder.color.g / 255.0,
+            cylinder.color.b / 255.0,
+        )
+
+        marker = Marker()
+        marker.header.frame_id = "map"
+        marker.header.stamp = rospy.Time.now()
+        marker.ns = "cylinder"
+        marker.id = self.cylinder_marker_id
+        marker.type = Marker.CYLINDER
+        marker.action = Marker.ADD
+        marker.pose = cylinder.pose
+        marker.lifetime = self.marker_duration
+        marker.scale = Vector3(0.1, 0.1, 0.1)
+        marker.color = ColorRGBA(r, g, b, 1.0)
+
+        self.cylinder_marker_array.markers.append(marker)
+        self.cylinder_marker_pub.publish(self.cylinder_marker_array)
 
     def cylinder_detected_callback(self, msg: RingPoseMsg):
         x = np.array(
@@ -237,8 +288,29 @@ class Clustering:
         is_new = self.cylinder_holder.update_ring(rpm, color)
         if is_new:
             print(f"{color} cylinder detected at: ", rpm)
+            self.publish_cylinder_marker(rpm)
             self.cylinder_color_pub.publish(color)
             self.cylinder_pub.publish(rpm)
+
+    def publish_ring_marker(self, ring: RingPoseMsg):
+        self.ring_marker_id += 1
+
+        r, g, b = ring.color.r / 255.0, ring.color.g / 255.0, ring.color.b / 255.0
+
+        marker = Marker()
+        marker.header.frame_id = "map"
+        marker.header.stamp = rospy.Time.now()
+        marker.ns = "ring"
+        marker.id = self.ring_marker_id
+        marker.type = Marker.SPHERE
+        marker.action = Marker.ADD
+        marker.pose = ring.pose
+        marker.lifetime = self.marker_duration
+        marker.scale = Vector3(0.1, 0.1, 0.1)
+        marker.color = ColorRGBA(r, g, b, 1.0)
+
+        self.ring_marker_array.markers.append(marker)
+        self.ring_marker_pub.publish(self.ring_marker_array)
 
     def ring_detetected_callback(self, msg: RingPoseMsg):
         """
@@ -272,12 +344,14 @@ class Clustering:
                 print("Green ring detected at: ", rpm)
                 self.green_ring_pub.publish(rpm)
                 # self.color_pub.publish(ColorMsg(color=color))
+                self.publish_ring_marker(rpm)
             print("Green ring detected at: ", rpm)
         else:
             rpm.color_name = color
             if is_new:
                 self.ring_pub.publish(rpm)
                 # self.color_pub.publish(ColorMsg(color=color))
+                self.publish_ring_marker(rpm)
             print(f"{color} ring detected at:", rpm)
 
     def color_reverse_lookup(self, rgb, type="ring"):
