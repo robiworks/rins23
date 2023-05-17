@@ -61,7 +61,7 @@ class Navigator {
     /* --------------------------------------------------------------------- */
 
     Navigator() {
-      ROS_INFO("[Navigator] Initializing");
+      ROS_INFO("Initializing");
 
       // Initialize MoveBaseClient
       client = new MoveBaseClient("move_base", true);
@@ -69,7 +69,7 @@ class Navigator {
 
       // Initialize SoundClient
       soundClient = new sound_play::SoundClient;
-      ROS_INFO("[Navigator] Waiting for SoundClient initialization");
+      ROS_INFO("Waiting for SoundClient initialization");
       ros::Duration(2.0).sleep();
 
       // Everything initialized, set current state to idle
@@ -103,7 +103,7 @@ class Navigator {
       // TODO Set target orientation
       goal.target_pose.pose.orientation.w = 1;
 
-      ROS_INFO("[Navigator] Navigating to: (x: %.3f, y: %.3f)", point.x, point.y);
+      ROS_INFO("Navigating to: (x: %.3f, y: %.3f)", point.x, point.y);
       client->sendGoal(goal);
       currentGoal = point;
 
@@ -138,7 +138,7 @@ class Navigator {
     // Callback to handle /custom_msgs/nav/ring_detected
     void ringCallback(const task3::RingPoseMsgConstPtr &msg) {
       ROS_INFO(
-          "[Navigator] Received new ring detected message: (x: %f, y: %f, z: %f, color: %s)",
+          "Received new ring detected message: (x: %f, y: %f, z: %f, color: %s)",
           msg->pose.position.x,
           msg->pose.position.y,
           msg->pose.position.z,
@@ -152,7 +152,7 @@ class Navigator {
     // Callback to handle /custom_msgs/nav/green_ring_detected
     void greenRingCallback(const task3::RingPoseMsgConstPtr &msg) {
       ROS_WARN(
-          "[Navigator] Green ring detected at (x: %f, y: %f, z: %f)",
+          "Green ring detected at (x: %f, y: %f, z: %f)",
           msg->pose.position.x,
           msg->pose.position.y,
           msg->pose.position.z
@@ -162,11 +162,7 @@ class Navigator {
 
       // Activate parking spot search
       NavigatorPoint parkingPoint { msg->pose.position.x + 0.215, msg->pose.position.y, false };
-      ROS_WARN(
-          "[Navigator] Navigating to parking point: (x: %f, y: %f)",
-          parkingPoint.x,
-          parkingPoint.y
-      );
+      ROS_WARN("Navigating to parking point: (x: %f, y: %f)", parkingPoint.x, parkingPoint.y);
 
       isParking = true;
       client->cancelGoal();
@@ -177,7 +173,7 @@ class Navigator {
     // Callback to handle /custom_msgs/nav/cylinder_detected
     void cylinderCallback(const task3::RingPoseMsgConstPtr &msg) {
       ROS_INFO(
-          "[Navigator] Received new cylinder detected message: (x: %f, y: %f, z: %f, color: %s)",
+          "Received new cylinder detected message: (x: %f, y: %f, z: %f, color: %s)",
           msg->pose.position.x,
           msg->pose.position.y,
           msg->pose.position.z,
@@ -222,7 +218,7 @@ class Navigator {
       // Monitor navigation until it reaches a terminal state
       actionlib::SimpleClientGoalState goalState = client->getState();
       while (!goalState.isDone() && !isKilled) {
-        ROS_DEBUG("[Navigator] Current goal state: %s", goalState.toString().c_str());
+        ROS_DEBUG("Current goal state: %s", goalState.toString().c_str());
 
         // Update currentState according to goal state
         switch (goalState.state_) {
@@ -249,16 +245,16 @@ class Navigator {
       switch (goalState.state_) {
         // The client cancels a goal before the action server has started working on it
         case actionlib::SimpleClientGoalState::RECALLED:
-          ROS_WARN("[Navigator] Client cancelled a goal before the server started processing it!");
+          ROS_WARN("Client cancelled a goal before the server started processing it!");
           break;
         // The action server rejected the goal for some reason
         case actionlib::SimpleClientGoalState::REJECTED:
-          ROS_WARN("[Navigator] Action server rejected the goal!");
+          ROS_WARN("Action server rejected the goal!");
           currentState = NavigatorState::FAILED;
           break;
         // The client cancels a goal that is currently being worked on by the action server
         case actionlib::SimpleClientGoalState::PREEMPTED:
-          ROS_WARN("[Navigator] Client cancelled a goal currently being worked on!");
+          ROS_WARN("Client cancelled a goal currently being worked on!");
 
           // Check if we cancelled the goal
           if (goalCancelled) {
@@ -269,11 +265,11 @@ class Navigator {
           break;
         // The action server completed the goal but encountered an error in doing so
         case actionlib::SimpleClientGoalState::ABORTED:
-          ROS_WARN("[Navigator] Goal completed but an error was encountered!");
+          ROS_WARN("Goal completed but an error was encountered!");
           break;
         // The action server successfully completed the goal
         case actionlib::SimpleClientGoalState::SUCCEEDED:
-          ROS_INFO("[Navigator] Successfully completed goal!");
+          ROS_INFO("Successfully completed goal!");
 
           // Check if this was a parking maneuver
           if (isParking) {
@@ -292,7 +288,7 @@ class Navigator {
           break;
         // The client lost contact with the action server
         case actionlib::SimpleClientGoalState::LOST:
-          ROS_WARN("[Navigator] Client lost contact with the action server!");
+          ROS_WARN("Client lost contact with the action server!");
           currentState = NavigatorState::FAILED;
           break;
       }
