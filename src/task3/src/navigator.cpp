@@ -137,64 +137,95 @@ class Navigator {
     // RING DETECTION
     // Callback to handle /custom_msgs/nav/ring_detected
     void ringCallback(const task3::RingPoseMsgConstPtr &msg) {
-      ROS_INFO(
-          "Received new ring detected message: (x: %f, y: %f, z: %f, color: %s)",
-          msg->pose.position.x,
-          msg->pose.position.y,
-          msg->pose.position.z,
-          msg->color_name.c_str()
-      );
-      sayRingColor(msg->color_name);
-      ringsFound++;
-    }
+      if (currentMainState == FSMMainState::EXPLORING &&
+          currentExploringState == FSMExploringState::EXPLORING) {
+        ROS_INFO(
+            "Ring detected: (x: %f, y: %f, z: %f, color: %s)",
+            msg->pose.position.x,
+            msg->pose.position.y,
+            msg->pose.position.z,
+            msg->color_name.c_str()
+        );
 
-    // RING DETECTION
-    // Callback to handle /custom_msgs/nav/green_ring_detected
-    void greenRingCallback(const task3::RingPoseMsgConstPtr &msg) {
-      ROS_WARN(
-          "Green ring detected at (x: %f, y: %f, z: %f)",
-          msg->pose.position.x,
-          msg->pose.position.y,
-          msg->pose.position.z
-      );
-      sayRingColor(msg->color_name);
-      ringsFound++;
+        // Transition state and optionally say the ring's color
+        currentExploringState = FSMExploringState::RING_DETECTED;
+        describeObject("ring", msg->color_name);
+        ringsFound++;
 
-      // Activate parking spot search
-      NavigatorPoint parkingPoint { msg->pose.position.x + 0.215, msg->pose.position.y, false };
-      ROS_WARN("Navigating to parking point: (x: %f, y: %f)", parkingPoint.x, parkingPoint.y);
+        // TODO Save the ring's color and location
 
-      isParking = true;
-      client->cancelGoal();
-      navigateTo(parkingPoint);
+        // Go back to exploring state after saying color
+        currentExploringState = FSMExploringState::EXPLORING;
+
+        // Activate parking spot search
+        // NavigatorPoint parkingPoint { msg->pose.position.x + 0.215, msg->pose.position.y, false };
+        // ROS_WARN("Navigating to parking point: (x: %f, y: %f)", parkingPoint.x, parkingPoint.y);
+
+        // isParking = true;
+        // client->cancelGoal();
+        // navigateTo(parkingPoint);
+      } else {
+        warnInvalidState("Cannot process ring detections outside Exploring.Exploring!");
+      }
     }
 
     // CYLINDER DETECTION
     // Callback to handle /custom_msgs/nav/cylinder_detected
     void cylinderCallback(const task3::RingPoseMsgConstPtr &msg) {
-      ROS_INFO(
-          "Received new cylinder detected message: (x: %f, y: %f, z: %f, color: %s)",
-          msg->pose.position.x,
-          msg->pose.position.y,
-          msg->pose.position.z,
-          msg->color_name.c_str()
-      );
-      cylindersFound++;
-      sayCylinderColor(msg->color_name);
+      if (currentMainState == FSMMainState::EXPLORING &&
+          currentExploringState == FSMExploringState::EXPLORING) {
+        ROS_INFO(
+            "Cylinder detected: (x: %f, y: %f, z: %f, color: %s)",
+            msg->pose.position.x,
+            msg->pose.position.y,
+            msg->pose.position.z,
+            msg->color_name.c_str()
+        );
+
+        // TODO Save the cylinder's color and location
+
+        // Transition state and say the cylinder's color
+        currentExploringState = FSMExploringState::CYLINDER_DETECTED;
+        describeObject("cylinder", msg->color_name);
+        cylindersFound++;
+
+        // Go back to exploring state after saying color
+        currentExploringState = FSMExploringState::EXPLORING;
+      } else {
+        warnInvalidState("Cannot process cylinder detections outside Exploring.Exploring!");
+      }
     }
 
     // FACE DETECTION
     // Callback to handle /custom_msgs/face_detected
     void faceDetectedCallback(const task3::FacePositionMsgConstPtr &msg) {
-      // TODO
-      ROS_INFO("Face detected message received");
+      if (currentMainState == FSMMainState::EXPLORING &&
+          currentExploringState == FSMExploringState::EXPLORING) {
+        ROS_INFO("Face detected: (x: %f, y: %f, z: %f)", msg->x, msg->y, msg->z);
+
+        // Send the robot towards the detected face
+        currentExploringState = FSMExploringState::APPROACHING_FACE;
+
+        // TODO Approach face
+      } else {
+        warnInvalidState("Cannot process face detections outside Exploring.Exploring!");
+      }
     }
 
     // POSTER DETECTION
     // Callback to handle /custom_msgs/poster_detected
     void posterDetectedCallback(const task3::FacePositionMsgConstPtr &msg) {
-      // TODO
-      ROS_INFO("Poster detected message received");
+      if (currentMainState == FSMMainState::EXPLORING &&
+          currentExploringState == FSMExploringState::EXPLORING) {
+        ROS_INFO("Poster detected: (x: %f, y: %f, z: %f)", msg->x, msg->y, msg->z);
+
+        // Send the robot towards the detected face
+        currentExploringState = FSMExploringState::APPROACHING_POSTER;
+
+        // TODO Approach poster
+      } else {
+        warnInvalidState("Cannot process poster detections outside Exploring.Exploring!");
+      }
     }
 
   private:
@@ -202,13 +233,15 @@ class Navigator {
     NavigatorPoint           currentGoal;
     sound_play::SoundClient* soundClient;
     ros::Publisher*          cmdvelPublisher;
-    bool                     isKilled            = false;
-    bool                     goalCancelled       = false;
-    bool                     isParking           = false;
-    int                      NUMBER_OF_RINGS     = 3;
-    int                      NUMBER_OF_CYLINDERS = 3;
-    int                      ringsFound          = 0;
-    int                      cylindersFound      = 0;
+    bool                     isKilled      = false;
+    bool                     goalCancelled = false;
+    bool                     isParking     = false;
+
+    // Default: 4 rings and 4 cylinders in task 3
+    int NUMBER_OF_RINGS     = 4;
+    int NUMBER_OF_CYLINDERS = 4;
+    int ringsFound          = 0;
+    int cylindersFound      = 0;
 
     /* --------------------------------------------------------------------- */
     /*   Navigation monitoring                                               */
@@ -329,26 +362,23 @@ class Navigator {
     /*   Functions utilizing sound node                                      */
     /* --------------------------------------------------------------------- */
 
-    void sayRingColor(std::string color_name) {
-      // Stop the robot temporarily
-      goalCancelled = true;
-      client->cancelGoal();
-
-      // Say the color of the ring
-      std::string speak = "I see a " + color_name + " ring!";
-      soundClient->say(speak);
+    void describeObject(std::string objectType, std::string colorName) {
+      // Say the type of the object and its color
+      std::string sentence = "I see a " + colorName + " " + objectType + "!";
+      soundClient->say(sentence);
       ros::Duration(2.0).sleep();
     }
 
-    void sayCylinderColor(std::string color_name) {
-      // Stop the robot temporarily
-      goalCancelled = true;
-      client->cancelGoal();
+    /* --------------------------------------------------------------------- */
+    /*   Logging utilities                                                   */
+    /* --------------------------------------------------------------------- */
 
-      // Say the color of the cylinder
-      std::string speak = "I see a " + color_name + " cylinder!";
-      soundClient->say(speak);
-      ros::Duration(2.0).sleep();
+    void warnInvalidState(std::string reason) {
+      ROS_WARN("Invalid state: %s", reason.c_str());
+      ROS_WARN("-- Current main state: %d", static_cast<int>(currentMainState));
+      ROS_WARN("-- Current exploring state: %d", static_cast<int>(currentExploringState));
+      ROS_WARN("-- Current searching state: %d", static_cast<int>(currentSearchingState));
+      ROS_WARN("-- Current parking state: %d", static_cast<int>(currentParkingState));
     }
 };
 
@@ -470,12 +500,6 @@ int main(int argc, char* argv[]) {
   navigator = new Navigator(&cmdvelPub, 4, 4);
 
   // Initialize ring detection subscribers
-  ros::Subscriber greenRingSub = nh.subscribe(
-      "/custom_msgs/nav/green_ring_detected",
-      1,
-      &Navigator::greenRingCallback,
-      navigator
-  );
   ros::Subscriber ringSub =
       nh.subscribe("/custom_msgs/nav/ring_detected", 1, &Navigator::ringCallback, navigator);
 
