@@ -12,7 +12,9 @@
 #include <signal.h>
 #include <sound_play/sound_play.h>
 #include <stdlib.h>
-#include <task2/RingPoseMsg.h>
+#include <task3/FacePositionMsg.h>
+#include <task3/PosterContentMsg.h>
+#include <task3/RingPoseMsg.h>
 
 using namespace std;
 using namespace cv;
@@ -132,8 +134,9 @@ class Navigator {
     /*   Callback handlers                                                   */
     /* --------------------------------------------------------------------- */
 
+    // RING DETECTION
     // Callback to handle /custom_msgs/nav/ring_detected
-    void ringCallback(const task2::RingPoseMsgConstPtr &msg) {
+    void ringCallback(const task3::RingPoseMsgConstPtr &msg) {
       ROS_INFO(
           "[Navigator] Received new ring detected message: (x: %f, y: %f, z: %f, color: %s)",
           msg->pose.position.x,
@@ -145,8 +148,9 @@ class Navigator {
       ringsFound++;
     }
 
+    // RING DETECTION
     // Callback to handle /custom_msgs/nav/green_ring_detected
-    void greenRingCallback(const task2::RingPoseMsgConstPtr &msg) {
+    void greenRingCallback(const task3::RingPoseMsgConstPtr &msg) {
       ROS_WARN(
           "[Navigator] Green ring detected at (x: %f, y: %f, z: %f)",
           msg->pose.position.x,
@@ -169,8 +173,9 @@ class Navigator {
       navigateTo(parkingPoint);
     }
 
+    // CYLINDER DETECTION
     // Callback to handle /custom_msgs/nav/cylinder_detected
-    void cylinderCallback(const task2::RingPoseMsgConstPtr &msg) {
+    void cylinderCallback(const task3::RingPoseMsgConstPtr &msg) {
       ROS_INFO(
           "[Navigator] Received new cylinder detected message: (x: %f, y: %f, z: %f, color: %s)",
           msg->pose.position.x,
@@ -180,6 +185,20 @@ class Navigator {
       );
       cylindersFound++;
       sayCylinderColor(msg->color_name);
+    }
+
+    // FACE DETECTION
+    // Callback to handle /custom_msgs/face_detected
+    void faceDetectedCallback(const task3::FacePositionMsgConstPtr &msg) {
+      // TODO
+      ROS_INFO("Face detected message received");
+    }
+
+    // POSTER DETECTION
+    // Callback to handle /custom_msgs/poster_detected
+    void posterDetectedCallback(const task3::FacePositionMsgConstPtr &msg) {
+      // TODO
+      ROS_INFO("Poster detected message received");
     }
 
   private:
@@ -194,6 +213,10 @@ class Navigator {
     int                      NUMBER_OF_CYLINDERS = 3;
     int                      ringsFound          = 0;
     int                      cylindersFound      = 0;
+
+    /* --------------------------------------------------------------------- */
+    /*   Navigation monitoring                                               */
+    /* --------------------------------------------------------------------- */
 
     void monitorNavigation() {
       // Monitor navigation until it reaches a terminal state
@@ -275,6 +298,10 @@ class Navigator {
       }
     }
 
+    /* --------------------------------------------------------------------- */
+    /*   Fine robot maneuvering                                              */
+    /* --------------------------------------------------------------------- */
+
     static constexpr float SPIN_RATE        = 4;
     static constexpr float SPIN_ANGULAR_VEL = 0.75;
     static constexpr float DEGREE_RATIO     = 29.75 / 360;
@@ -301,6 +328,10 @@ class Navigator {
       msg.angular.z = 0;
       cmdvelPublisher->publish(msg);
     }
+
+    /* --------------------------------------------------------------------- */
+    /*   Functions utilizing sound node                                      */
+    /* --------------------------------------------------------------------- */
 
     void sayRingColor(std::string color_name) {
       // Stop the robot temporarily
@@ -424,15 +455,6 @@ int main(int argc, char* argv[]) {
   }
 
   // Vector of interest points in the map
-  // vector<NavigatorPoint> interestPoints {
-  //   { 0.3815518319606781,  -1.021867036819458, false},
-  //   { 2.1781322956085205,  -1.012013554573059, false},
-  //   { 3.1676177978515625,  0.2698194980621338,  true},
-  //   { 1.1551456451416016,  0.9515640139579773, false},
-  //   { 1.0135111808776855,   2.656785011291504, false},
-  //   {-0.6259070038795471,   2.225338935852051,  true},
-  //   {-1.4852330684661865, 0.15332327783107758,  true},
-  // };
   vector<NavigatorPoint> interestPoints {
     {  0.3815518319606781,  -1.021867036819458, false},
     {  2.1781322956085205,  -1.012013554573059, false},
