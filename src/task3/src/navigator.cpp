@@ -61,8 +61,8 @@ class Navigator {
     }
 
     Navigator(ros::Publisher* cmdvelPub, int numberOfRings, int numberOfCylinders) : Navigator() {
-      cmdvelPublisher = cmdvelPub;
-      NUMBER_OF_RINGS = numberOfRings;
+      cmdvelPublisher     = cmdvelPub;
+      NUMBER_OF_RINGS     = numberOfRings;
       NUMBER_OF_CYLINDERS = numberOfCylinders;
     }
 
@@ -161,13 +161,13 @@ class Navigator {
     NavigatorPoint           currentGoal;
     sound_play::SoundClient* soundClient;
     ros::Publisher*          cmdvelPublisher;
-    bool                     isKilled        = false;
-    bool                     goalCancelled   = false;
-    bool                     isParking       = false;
-    int                      NUMBER_OF_RINGS = 3;
+    bool                     isKilled            = false;
+    bool                     goalCancelled       = false;
+    bool                     isParking           = false;
+    int                      NUMBER_OF_RINGS     = 3;
     int                      NUMBER_OF_CYLINDERS = 3;
-    int                      ringsFound      = 0;
-    int                      cylindersFound  = 0;
+    int                      ringsFound          = 0;
+    int                      cylindersFound      = 0;
 
     void monitorNavigation() {
       // Monitor navigation until it reaches a terminal state
@@ -410,7 +410,7 @@ int main(int argc, char* argv[]) {
   vector<NavigatorPoint> interestPoints {
     {  0.3815518319606781,  -1.021867036819458, false},
     {  2.1781322956085205,  -1.012013554573059, false},
-    {  2.6001322956085205,  -0.3131423993110657, true},
+    {  2.6001322956085205, -0.3131423993110657,  true},
     {   3.067493640899658,  0.7811423993110657,  true},
     {  1.4856997728347778,  0.9578039050102234,  true},
     {  2.3523111808776855,   2.510785011291504,  true},
