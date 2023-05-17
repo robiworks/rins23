@@ -1,3 +1,5 @@
+#include "navigator_fsm.h"
+
 #include <actionlib/client/simple_action_client.h>
 #include <actionlib/client/simple_client_goal_state.h>
 #include <cmath>
@@ -44,6 +46,18 @@ class Navigator {
   public:
     NavigatorState currentState;
 
+    // Main FSM state
+    FSMMainState currentMainState;
+
+    // Child FSM states depending on current main state
+    FSMExploringState currentExploringState;
+    FSMSearchingState currentSearchingState;
+    FSMParkingState   currentParkingState;
+
+    /* --------------------------------------------------------------------- */
+    /*   Constructors and init                                               */
+    /* --------------------------------------------------------------------- */
+
     Navigator() {
       ROS_INFO("[Navigator] Initializing");
 
@@ -58,6 +72,10 @@ class Navigator {
 
       // Everything initialized, set current state to idle
       currentState = NavigatorState::IDLE;
+
+      // The FSM starts in Exploring.Exploring state
+      currentMainState      = FSMMainState::EXPLORING;
+      currentExploringState = FSMExploringState::EXPLORING;
     }
 
     Navigator(ros::Publisher* cmdvelPub, int numberOfRings, int numberOfCylinders) : Navigator() {
@@ -65,6 +83,10 @@ class Navigator {
       NUMBER_OF_RINGS     = numberOfRings;
       NUMBER_OF_CYLINDERS = numberOfCylinders;
     }
+
+    /* --------------------------------------------------------------------- */
+    /*   Public navigator functions                                          */
+    /* --------------------------------------------------------------------- */
 
     // Navigate to a given point
     void navigateTo(NavigatorPoint point) {
@@ -97,6 +119,18 @@ class Navigator {
         }
       }
     }
+
+    // Clean up (used on SIGINT)
+    void cleanUp() {
+      // Cancel all goals on the client and stop playing sounds
+      client->cancelAllGoals();
+      soundClient->stopAll();
+      isKilled = true;
+    }
+
+    /* --------------------------------------------------------------------- */
+    /*   Callback handlers                                                   */
+    /* --------------------------------------------------------------------- */
 
     // Callback to handle /custom_msgs/nav/ring_detected
     void ringCallback(const task2::RingPoseMsgConstPtr &msg) {
@@ -146,14 +180,6 @@ class Navigator {
       );
       cylindersFound++;
       sayCylinderColor(msg->color_name);
-    }
-
-    // Clean up (used on SIGINT)
-    void cleanUp() {
-      // Cancel all goals on the client and stop playing sounds
-      client->cancelAllGoals();
-      soundClient->stopAll();
-      isKilled = true;
     }
 
   private:
