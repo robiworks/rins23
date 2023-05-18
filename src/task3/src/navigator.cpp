@@ -188,7 +188,12 @@ class Navigator {
     void faceDetectedCallback(const task3::FacePositionMsgConstPtr &msg) {
       if (currentMainState == FSMMainState::EXPLORING &&
           currentExploringState == FSMExploringState::EXPLORING) {
-        ROS_INFO("Face detected: (x: %f, y: %f, z: %f)", msg->x, msg->y, msg->z);
+        ROS_INFO(
+            "Face detected: (x: %f, y: %f, z: %f)",
+            msg->pose.position.x,
+            msg->pose.position.y,
+            msg->pose.position.z
+        );
 
         // Send the robot towards the detected face
         currentExploringState = FSMExploringState::APPROACHING_FACE;
@@ -223,7 +228,12 @@ class Navigator {
     void posterDetectedCallback(const task3::FacePositionMsgConstPtr &msg) {
       if (currentMainState == FSMMainState::EXPLORING &&
           currentExploringState == FSMExploringState::EXPLORING) {
-        ROS_INFO("Poster detected: (x: %f, y: %f, z: %f)", msg->x, msg->y, msg->z);
+        ROS_INFO(
+            "Poster detected: (x: %f, y: %f, z: %f)",
+            msg->pose.position.x,
+            msg->pose.position.y,
+            msg->pose.position.z
+        );
 
         // Send the robot towards the detected face
         currentExploringState = FSMExploringState::APPROACHING_POSTER;
