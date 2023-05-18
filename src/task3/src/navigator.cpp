@@ -211,6 +211,12 @@ class Navigator {
         currentExploringState = FSMExploringState::APPROACHING_FACE;
 
         // TODO Approach face
+        std_msgs::Bool approachMsg;
+        approachMsg.data = true;
+
+        // Finished approaching, transition state
+        currentExploringState = FSMExploringState::AT_FACE;
+        facePublisher->publish(approachMsg);
       } else {
         warnInvalidState("Cannot process face detections outside Exploring.Exploring!");
       }
@@ -227,6 +233,12 @@ class Navigator {
         currentExploringState = FSMExploringState::APPROACHING_POSTER;
 
         // TODO Approach poster
+        std_msgs::Bool approachMsg;
+        approachMsg.data = true;
+
+        // Finished approaching, transition state
+        currentExploringState = FSMExploringState::AT_POSTER;
+        posterPublisher->publish(approachMsg);
       } else {
         warnInvalidState("Cannot process poster detections outside Exploring.Exploring!");
       }
