@@ -199,8 +199,10 @@ class Navigator {
 
         // Get navigator point for approaching
         NavigatorPoint approachPoint = poseToNavigatorPoint(msg->pose);
+        approachPoint.spin           = false;
+
         ROS_INFO("Approaching face");
-        client->cancelGoal();
+        client->cancelAllGoals();
         navigateTo(approachPoint);
 
         // Finished approaching, transition state
@@ -232,8 +234,10 @@ class Navigator {
 
         // Get navigator point for approaching
         NavigatorPoint approachPoint = poseToNavigatorPoint(msg->pose);
+        approachPoint.spin           = false;
+
         ROS_INFO("Approaching poster");
-        client->cancelGoal();
+        client->cancelAllGoals();
         navigateTo(approachPoint);
 
         // Finished approaching, transition state
