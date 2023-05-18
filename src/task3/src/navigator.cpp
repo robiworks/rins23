@@ -150,9 +150,10 @@ class Navigator {
         // Transition state and optionally say the ring's color
         currentExploringState = FSMExploringState::RING_DETECTED;
         describeObject("ring", msg->color_name);
-        ringsFound++;
 
-        // TODO Save the ring's color and location
+        // Save the ring's color and location
+        savedRings.push_back(msg);
+        ringsFound++;
 
         // Go back to exploring state after saying color
         currentExploringState = FSMExploringState::EXPLORING;
@@ -182,11 +183,12 @@ class Navigator {
             msg->color_name.c_str()
         );
 
-        // TODO Save the cylinder's color and location
-
         // Transition state and say the cylinder's color
         currentExploringState = FSMExploringState::CYLINDER_DETECTED;
         describeObject("cylinder", msg->color_name);
+
+        // Save the cylinder's color and location
+        savedCylinders.push_back(msg);
         cylindersFound++;
 
         // Go back to exploring state after saying color
@@ -242,6 +244,10 @@ class Navigator {
     int NUMBER_OF_CYLINDERS = 4;
     int ringsFound          = 0;
     int cylindersFound      = 0;
+
+    // Vectors for saving data
+    vector<task3::RingPoseMsgConstPtr> savedRings;
+    vector<task3::RingPoseMsgConstPtr> savedCylinders;
 
     /* --------------------------------------------------------------------- */
     /*   Navigation monitoring                                               */
