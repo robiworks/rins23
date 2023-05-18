@@ -505,15 +505,21 @@ int main(int argc, char* argv[]) {
   // Initialize Navigator
   navigator = new Navigator(&cmdvelPub, 4, 4);
 
-  // Initialize ring detection subscribers
+  // Initialize subscribers
   ros::Subscriber ringSub =
       nh.subscribe("/custom_msgs/nav/ring_detected", 1, &Navigator::ringCallback, navigator);
-
-  // Initialize cylinder detection subscriber
   ros::Subscriber cylinderSub = nh.subscribe(
       "/custom_msgs/nav/cylinder_detected",
       1,
       &Navigator::cylinderCallback,
+      navigator
+  );
+  ros::Subscriber faceSub =
+      nh.subscribe("/custom_msgs/face_detected", 1, &Navigator::faceDetectedCallback, navigator);
+  ros::Subscriber posterSub = nh.subscribe(
+      "/custom_msgs/poster_detected",
+      1,
+      &Navigator::posterDetectedCallback,
       navigator
   );
 
