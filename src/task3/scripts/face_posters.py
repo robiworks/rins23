@@ -344,7 +344,9 @@ class face_localizer:
             point_world = self.tf_buf.transform(point_s, "map")
 
             # Get the orientation of camera_rgb_optical_frame with respect to map frame
-            transform = self.tf_buf.lookup_transform("map", "camera_rgb_optical_frame", stamp)
+            transform = self.tf_buf.lookup_transform(
+                "map", "camera_rgb_optical_frame", stamp
+            )
             orientation = transform.transform.rotation
             quaternion = [orientation.x, orientation.y, orientation.z, orientation.w]
             euler = euler_from_quaternion(quaternion)
@@ -500,7 +502,12 @@ class face_localizer:
 
     def find_faces(self):
         descriptors = self.detect_faces()
-        if descriptors is None:
+        if (
+            descriptors is None
+            or len(descriptors) == 0
+            or descriptors == 0
+            or isinstance(descriptors, int)
+        ):
             return
         for (
             face_descriptor,
@@ -531,7 +538,10 @@ class face_localizer:
 
         # Get the pose of the face
         pose, angle = self.get_pose(
-            (x1, x2, y1, y2), max(face_distance - 0.40, 0.30) , depth_time, return_angle=True
+            (x1, x2, y1, y2),
+            max(face_distance - 0.40, 0.30),
+            depth_time,
+            return_angle=True,
         )
 
         print("ANGLE", angle)
