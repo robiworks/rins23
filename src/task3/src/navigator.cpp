@@ -11,6 +11,7 @@
 #include <ros/ros.h>
 #include <signal.h>
 #include <sound_play/sound_play.h>
+#include <std_msgs/Bool.h>
 #include <stdlib.h>
 #include <task3/FacePositionMsg.h>
 #include <task3/PosterContentMsg.h>
@@ -80,10 +81,11 @@ class Navigator {
       currentExploringState = FSMExploringState::EXPLORING;
     }
 
-    Navigator(ros::Publisher* cmdvelPub, int numberOfRings, int numberOfCylinders) : Navigator() {
-      cmdvelPublisher     = cmdvelPub;
-      NUMBER_OF_RINGS     = numberOfRings;
-      NUMBER_OF_CYLINDERS = numberOfCylinders;
+    Navigator(ros::Publisher* cmdvelPub, ros::Publisher* facePub, ros::Publisher* posterPub)
+        : Navigator() {
+      cmdvelPublisher = cmdvelPub;
+      facePublisher   = facePub;
+      posterPublisher = posterPub;
     }
 
     /* --------------------------------------------------------------------- */
@@ -235,6 +237,8 @@ class Navigator {
     NavigatorPoint           currentGoal;
     sound_play::SoundClient* soundClient;
     ros::Publisher*          cmdvelPublisher;
+    ros::Publisher*          facePublisher;
+    ros::Publisher*          posterPublisher;
     bool                     isKilled      = false;
     bool                     goalCancelled = false;
     bool                     isParking     = false;
@@ -501,9 +505,11 @@ int main(int argc, char* argv[]) {
 
   // Initialize publisher for robot rotation
   ros::Publisher cmdvelPub = nh.advertise<geometry_msgs::Twist>("/cmd_vel_mux/input/navi", 10);
+  ros::Publisher facePub   = nh.advertise<std_msgs::Bool>("/custom_msgs/face_approached", 10);
+  ros::Publisher posterPub = nh.advertise<std_msgs::Bool>("/custom_msgs/poster_approached", 10);
 
   // Initialize Navigator
-  navigator = new Navigator(&cmdvelPub, 4, 4);
+  navigator = new Navigator(&cmdvelPub, &facePub, &posterPub);
 
   // Initialize subscribers
   ros::Subscriber ringSub =
