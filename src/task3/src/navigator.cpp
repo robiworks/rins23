@@ -233,15 +233,20 @@ class Navigator {
     }
 
   private:
+    // Navigation client
     MoveBaseClient*          client;
     NavigatorPoint           currentGoal;
     sound_play::SoundClient* soundClient;
-    ros::Publisher*          cmdvelPublisher;
-    ros::Publisher*          facePublisher;
-    ros::Publisher*          posterPublisher;
-    bool                     isKilled      = false;
-    bool                     goalCancelled = false;
-    bool                     isParking     = false;
+
+    // Publishers
+    ros::Publisher* cmdvelPublisher;
+    ros::Publisher* facePublisher;
+    ros::Publisher* posterPublisher;
+
+    // Status booleans
+    bool isKilled      = false;
+    bool goalCancelled = false;
+    bool isParking     = false;
 
     // Default: 4 rings and 4 cylinders in task 3
     int NUMBER_OF_RINGS     = 4;
