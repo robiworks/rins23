@@ -28,17 +28,10 @@ typedef actionlib::SimpleActionClient<move_base_msgs::MoveBaseAction> MoveBaseCl
 /* ------------------------------------------------------------------------- */
 
 struct NavigatorPoint {
-    double x;
-    double y;
-    bool   spin;
-};
-
-enum NavigatorState {
-  IDLE,       // Navigation is idle, only applicable at the start
-  PREPARING,  // Navigation is preparing to start
-  NAVIGATING, // Robot is navigating around the map
-  FINISHED,   // Navigation finished successfully
-  FAILED      // Navigation failed
+    double                    x;
+    double                    y;
+    bool                      spin;
+    geometry_msgs::Quaternion orientation;
 };
 
 /* ------------------------------------------------------------------------- */
@@ -47,8 +40,6 @@ enum NavigatorState {
 
 class Navigator {
   public:
-    NavigatorState currentState;
-
     // Main FSM state
     FSMMainState currentMainState;
 
@@ -72,9 +63,6 @@ class Navigator {
       soundClient = new sound_play::SoundClient;
       ROS_INFO("Waiting for SoundClient initialization");
       ros::Duration(2.0).sleep();
-
-      // Everything initialized, set current state to idle
-      currentState = NavigatorState::IDLE;
 
       // The FSM starts in Exploring.Exploring state
       currentMainState      = FSMMainState::EXPLORING;
@@ -118,9 +106,12 @@ class Navigator {
       int len = points.size();
 
       for (int i = 0; i < len; i++) {
-        if (ringsFound < NUMBER_OF_RINGS || cylindersFound < NUMBER_OF_CYLINDERS) {
-          navigateTo(points[i]);
-        }
+        navigateTo(points[i]);
+      }
+
+      if (currentMainState == FSMMainState::EXPLORING) {
+        // Finished exploring the polygon
+        currentExploringState = FSMExploringState::FINISHED;
       }
     }
 
@@ -159,14 +150,6 @@ class Navigator {
 
         // Go back to exploring state after saying color
         currentExploringState = FSMExploringState::EXPLORING;
-
-        // Activate parking spot search
-        // NavigatorPoint parkingPoint { msg->pose.position.x + 0.215, msg->pose.position.y, false };
-        // ROS_WARN("Navigating to parking point: (x: %f, y: %f)", parkingPoint.x, parkingPoint.y);
-
-        // isParking = true;
-        // client->cancelGoal();
-        // navigateTo(parkingPoint);
       } else {
         warnInvalidState("Cannot process ring detections outside Exploring.Exploring!");
       }
@@ -210,13 +193,24 @@ class Navigator {
         // Send the robot towards the detected face
         currentExploringState = FSMExploringState::APPROACHING_FACE;
 
-        // TODO Approach face
+        // Approach face
         std_msgs::Bool approachMsg;
         approachMsg.data = true;
+
+        // Get navigator point for approaching
+        NavigatorPoint approachPoint = poseToNavigatorPoint(msg->pose);
+        ROS_INFO("Approaching face");
+        client->cancelGoal();
+        navigateTo(approachPoint);
 
         // Finished approaching, transition state
         currentExploringState = FSMExploringState::AT_FACE;
         facePublisher->publish(approachMsg);
+
+        // TODO Handle dialogue flow, save if informative, then proceed with exploration
+        currentExploringState = FSMExploringState::DIALOGUE;
+        currentExploringState = FSMExploringState::SAVE_DIALOGUE;
+        currentExploringState = FSMExploringState::EXPLORING;
       } else {
         warnInvalidState("Cannot process face detections outside Exploring.Exploring!");
       }
@@ -232,13 +226,24 @@ class Navigator {
         // Send the robot towards the detected face
         currentExploringState = FSMExploringState::APPROACHING_POSTER;
 
-        // TODO Approach poster
+        // Approach poster
         std_msgs::Bool approachMsg;
         approachMsg.data = true;
+
+        // Get navigator point for approaching
+        NavigatorPoint approachPoint = poseToNavigatorPoint(msg->pose);
+        ROS_INFO("Approaching poster");
+        client->cancelGoal();
+        navigateTo(approachPoint);
 
         // Finished approaching, transition state
         currentExploringState = FSMExploringState::AT_POSTER;
         posterPublisher->publish(approachMsg);
+
+        // TODO Handle OCR flow, save if informative, then proceed with exploration
+        currentExploringState = FSMExploringState::POSTER_OCR;
+        currentExploringState = FSMExploringState::SAVE_POSTER;
+        currentExploringState = FSMExploringState::EXPLORING;
       } else {
         warnInvalidState("Cannot process poster detections outside Exploring.Exploring!");
       }
@@ -256,9 +261,7 @@ class Navigator {
     ros::Publisher* posterPublisher;
 
     // Status booleans
-    bool isKilled      = false;
-    bool goalCancelled = false;
-    bool isParking     = false;
+    bool isKilled = false;
 
     // Default: 4 rings and 4 cylinders in task 3
     int NUMBER_OF_RINGS     = 4;
@@ -284,24 +287,23 @@ class Navigator {
         switch (goalState.state_) {
           // The goal has been sent to the action server but has not yet been processed
           case actionlib::SimpleClientGoalState::PENDING:
-            currentState = NavigatorState::PREPARING;
             break;
           // The goal is currently being worked on by the action server
           case actionlib::SimpleClientGoalState::ACTIVE:
-            currentState = NavigatorState::NAVIGATING;
             break;
         }
 
-        // Handle incoming messages to stop/explore etc.
-        // They will be processed as callbacks
-        ros::spinOnce();
+        if (currentMainState == FSMMainState::EXPLORING &&
+            currentExploringState == FSMExploringState::EXPLORING) {
+          // Process queued callbacks if the robot is just driving around, exploring
+          ros::spinOnce();
+        }
 
-        ros::Duration(0.5).sleep();
+        ros::Duration(0.25).sleep();
         goalState = client->getState();
       }
 
       // Handle terminal states
-      currentState = NavigatorState::FINISHED;
       switch (goalState.state_) {
         // The client cancels a goal before the action server has started working on it
         case actionlib::SimpleClientGoalState::RECALLED:
@@ -309,36 +311,19 @@ class Navigator {
           break;
         // The action server rejected the goal for some reason
         case actionlib::SimpleClientGoalState::REJECTED:
-          ROS_WARN("Action server rejected the goal!");
-          currentState = NavigatorState::FAILED;
+          ROS_ERROR("Action server rejected the goal!");
           break;
         // The client cancels a goal that is currently being worked on by the action server
         case actionlib::SimpleClientGoalState::PREEMPTED:
           ROS_WARN("Client cancelled a goal currently being worked on!");
-
-          // Check if we cancelled the goal
-          if (goalCancelled) {
-            goalCancelled = false;
-            navigateTo(currentGoal);
-          }
-
           break;
         // The action server completed the goal but encountered an error in doing so
         case actionlib::SimpleClientGoalState::ABORTED:
-          ROS_WARN("Goal completed but an error was encountered!");
+          ROS_ERROR("Goal completed but an error was encountered!");
           break;
         // The action server successfully completed the goal
         case actionlib::SimpleClientGoalState::SUCCEEDED:
           ROS_INFO("Successfully completed goal!");
-
-          // Check if this was a parking maneuver
-          if (isParking) {
-            soundClient->say("I have finished parking myself!");
-            ros::Duration(4.0).sleep();
-            currentState = NavigatorState::FINISHED;
-            isParking    = false;
-            break;
-          }
 
           // Spin 360 degrees if the interest points wants us to do so
           if (currentGoal.spin) {
@@ -348,8 +333,7 @@ class Navigator {
           break;
         // The client lost contact with the action server
         case actionlib::SimpleClientGoalState::LOST:
-          ROS_WARN("Client lost contact with the action server!");
-          currentState = NavigatorState::FAILED;
+          ROS_ERROR("Client lost contact with the action server!");
           break;
       }
     }
@@ -406,6 +390,21 @@ class Navigator {
       ROS_WARN("-- Current exploring state: %d", static_cast<int>(currentExploringState));
       ROS_WARN("-- Current searching state: %d", static_cast<int>(currentSearchingState));
       ROS_WARN("-- Current parking state: %d", static_cast<int>(currentParkingState));
+    }
+
+    /* --------------------------------------------------------------------- */
+    /*   Utility functions                                                   */
+    /* --------------------------------------------------------------------- */
+
+    NavigatorPoint poseToNavigatorPoint(geometry_msgs::Pose pose) {
+      NavigatorPoint point;
+
+      // Copy x, y, orientation
+      point.x           = pose.position.x;
+      point.y           = pose.position.y;
+      point.orientation = pose.orientation;
+
+      return point;
     }
 };
 
