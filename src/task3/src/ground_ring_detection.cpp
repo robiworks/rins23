@@ -7,7 +7,7 @@
 #include <opencv2/opencv.hpp>
 #include <ros/ros.h>
 #include <sensor_msgs/Image.h>
-#include <task2/RingPoseMsg.h>
+#include <task3/RingPoseMsg.h>
 #include <trajectory_msgs/JointTrajectory.h>
 #include <trajectory_msgs/JointTrajectoryPoint.h>
 #include <visualization_msgs/Marker.h>
@@ -53,7 +53,7 @@ void getDepths(
     int minY = std::max(cvRound(circles[i][1] - circles[i][2]), 0);
     int maxY = std::min(cvRound(circles[i][1] + circles[i][2]), depth_f->image.rows);
 
-    task2::RingPoseMsg pose;
+    task3::RingPoseMsg pose;
 
     pose.color.r = 0;
     pose.color.g = 0;
@@ -298,7 +298,7 @@ void image_callback(
   getDepths(circles, cv_ptr, cv_rgb, rgb_img, depth_image->header);
 }
 
-void green_callback(task2::RingPoseMsg pose) {
+void green_callback(task3::RingPoseMsg pose) {
   ROS_WARN("Green callback");
 
   // Move the arm to the position
@@ -326,7 +326,7 @@ void green_callback(task2::RingPoseMsg pose) {
   search = true;
 }
 
-void stop_green_callback(task2::RingPoseMsg pose) {
+void stop_green_callback(task3::RingPoseMsg pose) {
   ROS_WARN("Stop green callback");
   search = false;
 }
@@ -362,7 +362,7 @@ int main(int argc, char** argv) {
   ros::Subscriber green_sub =
       nh.subscribe("/custom_msgs/nav/green_ring_detected", 1, &green_callback);
 
-  ground_ring_pub = nh.advertise<task2::RingPoseMsg>("/custom_msgs/ground_ring_detection", 1000);
+  ground_ring_pub = nh.advertise<task3::RingPoseMsg>("/custom_msgs/ground_ring_detection", 1000);
 
   Subscriber<Image> rgb_sub(nh, rgb_topic, 1);
   Subscriber<Image> depth_sub(nh, depth_topic, 1);
