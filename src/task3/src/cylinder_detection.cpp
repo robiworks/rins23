@@ -142,9 +142,26 @@ void cloud_cb(const pcl::PCLPointCloud2ConstPtr &cloud_blob) {
     point_map.header.frame_id = "map";
     point_map.header.stamp    = ros::Time::now();
 
-    point_camera.point.x = centroid[0];
-    point_camera.point.y = centroid[1];
-    point_camera.point.z = centroid[2];
+    double real_x = centroid[0];
+    double real_y = centroid[1];
+    double real_z = centroid[2];
+    
+    // Safety margin - this is the distance by which you want to virtually "bring closer" the cylinder.
+    double safety_margin = 0.3; 
+    
+    // Calculate the direction vector from the robot to the cylinder (assuming robot is at (0, 0, 0))
+    double direction_x = real_x / std::sqrt(real_x * real_x + real_y * real_y + real_z * real_z);
+    double direction_y = real_y / std::sqrt(real_x * real_x + real_y * real_y + real_z * real_z);
+    double direction_z = real_z / std::sqrt(real_x * real_x + real_y * real_y + real_z * real_z);
+    
+    // Subtract the safety margin from the real position in the direction of the cylinder
+    double virtual_x = real_x - safety_margin * direction_x;
+    double virtual_y = real_y - safety_margin * direction_y;
+    double virtual_z = real_z - safety_margin * direction_z;
+
+    point_camera.point.x = virtual_x;
+    point_camera.point.y = virtual_y;
+    point_camera.point.z = virtual_z;
 
     int r_total = 0, g_total = 0, b_total = 0;
     int num_points = cloud_cylinder->points.size();
