@@ -119,6 +119,7 @@ class Navigator {
       int len = points.size();
 
       for (int i = 0; i < len; i++) {
+        currentGoal = points[i];
         navigateTo(points[i]);
 
         // Spin 360 degrees if the interest points wants us to do so
@@ -160,6 +161,8 @@ class Navigator {
 
         // Transition state and optionally say the ring's color
         currentExploringState = FSMExploringState::RING_DETECTED;
+        client->cancelGoal();
+        isCancelled = true;
         describeObject("ring", msg->color_name);
 
         // Save the ring's color and location
@@ -168,6 +171,7 @@ class Navigator {
 
         // Go back to exploring state after saying color
         currentExploringState = FSMExploringState::EXPLORING;
+        navigateTo(currentGoal);
       } else {
         warnInvalidState("Cannot process ring detections outside Exploring.Exploring!");
       }
@@ -188,6 +192,8 @@ class Navigator {
 
         // Transition state and say the cylinder's color
         currentExploringState = FSMExploringState::CYLINDER_DETECTED;
+        client->cancelGoal();
+        isCancelled = true;
         describeObject("cylinder", msg->color_name);
 
         // Save the cylinder's color and location
@@ -196,6 +202,7 @@ class Navigator {
 
         // Go back to exploring state after saying color
         currentExploringState = FSMExploringState::EXPLORING;
+        navigateTo(currentGoal);
       } else {
         warnInvalidState("Cannot process cylinder detections outside Exploring.Exploring!");
       }
@@ -291,6 +298,7 @@ class Navigator {
     // Navigation client
     MoveBaseClient*          client;
     sound_play::SoundClient* soundClient;
+    NavigatorPoint           currentGoal;
 
     // Publishers
     ros::Publisher* cmdvelPublisher;
@@ -298,7 +306,8 @@ class Navigator {
     ros::Publisher* posterPublisher;
 
     // Status booleans
-    bool isKilled = false;
+    bool isKilled    = false;
+    bool isCancelled = false;
 
     // Default: 4 rings and 4 cylinders in task 3
     int NUMBER_OF_RINGS     = 4;
@@ -317,7 +326,7 @@ class Navigator {
     void monitorNavigation() {
       // Monitor navigation until it reaches a terminal state
       actionlib::SimpleClientGoalState goalState = client->getState();
-      while (!goalState.isDone() && !isKilled) {
+      while (!goalState.isDone() && !isKilled && !isCancelled) {
         ROS_DEBUG("Current goal state: %s", goalState.toString().c_str());
 
         // Update currentState according to goal state
@@ -367,6 +376,8 @@ class Navigator {
           ROS_ERROR("Client lost contact with the action server!");
           break;
       }
+
+      isCancelled = false;
     }
 
     /* --------------------------------------------------------------------- */
