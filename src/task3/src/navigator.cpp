@@ -28,10 +28,9 @@ typedef actionlib::SimpleActionClient<move_base_msgs::MoveBaseAction> MoveBaseCl
 /* ------------------------------------------------------------------------- */
 
 struct NavigatorPoint {
-    double                    x;
-    double                    y;
-    bool                      spin;
-    geometry_msgs::Quaternion orientation;
+    double x;
+    double y;
+    bool   spin;
 };
 
 /* ------------------------------------------------------------------------- */
@@ -80,6 +79,22 @@ class Navigator {
     /*   Public navigator functions                                          */
     /* --------------------------------------------------------------------- */
 
+    void approachPoint(geometry_msgs::Pose point) {
+      move_base_msgs::MoveBaseGoal goal;
+
+      // Set header
+      goal.target_pose.header.frame_id = "map";
+      goal.target_pose.header.stamp    = ros::Time::now();
+      // Set target pose
+      goal.target_pose.pose = point;
+
+      ROS_INFO("Approaching: (x: %.3f, y: %.3f)", point.position.x, point.position.y);
+      client->sendGoal(goal);
+
+      // Start monitoring navigation
+      monitorNavigation();
+    }
+
     // Navigate to a given point
     void navigateTo(NavigatorPoint point) {
       move_base_msgs::MoveBaseGoal goal;
@@ -88,14 +103,12 @@ class Navigator {
       goal.target_pose.header.frame_id = "map";
       goal.target_pose.header.stamp    = ros::Time::now();
       // Set target position
-      goal.target_pose.pose.position.x = point.x;
-      goal.target_pose.pose.position.y = point.y;
-      // TODO Set target orientation
+      goal.target_pose.pose.position.x    = point.x;
+      goal.target_pose.pose.position.y    = point.y;
       goal.target_pose.pose.orientation.w = 1;
 
       ROS_INFO("Navigating to: (x: %.3f, y: %.3f)", point.x, point.y);
       client->sendGoal(goal);
-      currentGoal = point;
 
       // Start monitoring navigation
       monitorNavigation();
@@ -107,6 +120,11 @@ class Navigator {
 
       for (int i = 0; i < len; i++) {
         navigateTo(points[i]);
+
+        // Spin 360 degrees if the interest points wants us to do so
+        if (points[i].spin) {
+          spin(360.0);
+        }
       }
 
       if (currentMainState == FSMMainState::EXPLORING) {
@@ -203,12 +221,12 @@ class Navigator {
         approachMsg.data = true;
 
         // Get navigator point for approaching
-        NavigatorPoint approachPoint = poseToNavigatorPoint(msg->pose);
-        approachPoint.spin           = false;
+        geometry_msgs::Pose approachPose;
+        approachPose = msg->pose;
 
         ROS_INFO("Approaching face");
-        client->cancelAllGoals();
-        navigateTo(approachPoint);
+        client->cancelGoal();
+        approachPoint(approachPose);
 
         describeObject("face", "dumb");
         ros::Duration(5.0).sleep();
@@ -246,12 +264,12 @@ class Navigator {
         approachMsg.data = true;
 
         // Get navigator point for approaching
-        NavigatorPoint approachPoint = poseToNavigatorPoint(msg->pose);
-        approachPoint.spin           = false;
+        geometry_msgs::Pose approachPose;
+        approachPose = msg->pose;
 
         ROS_INFO("Approaching poster");
-        client->cancelAllGoals();
-        navigateTo(approachPoint);
+        client->cancelGoal();
+        approachPoint(approachPose);
 
         describeObject("poster", "dumb");
         ros::Duration(5.0).sleep();
@@ -272,7 +290,6 @@ class Navigator {
   private:
     // Navigation client
     MoveBaseClient*          client;
-    NavigatorPoint           currentGoal;
     sound_play::SoundClient* soundClient;
 
     // Publishers
@@ -344,12 +361,6 @@ class Navigator {
         // The action server successfully completed the goal
         case actionlib::SimpleClientGoalState::SUCCEEDED:
           ROS_INFO("Successfully completed goal!");
-
-          // Spin 360 degrees if the interest points wants us to do so
-          if (currentGoal.spin) {
-            spin(360.0);
-          }
-
           break;
         // The client lost contact with the action server
         case actionlib::SimpleClientGoalState::LOST:
@@ -410,36 +421,6 @@ class Navigator {
       ROS_WARN("-- Current exploring state: %d", static_cast<int>(currentExploringState));
       ROS_WARN("-- Current searching state: %d", static_cast<int>(currentSearchingState));
       ROS_WARN("-- Current parking state: %d", static_cast<int>(currentParkingState));
-    }
-
-    /* --------------------------------------------------------------------- */
-    /*   Utility functions                                                   */
-    /* --------------------------------------------------------------------- */
-
-    NavigatorPoint poseToNavigatorPoint(geometry_msgs::Pose pose) {
-      NavigatorPoint point;
-
-      // Copy x, y, orientation
-      point.x           = pose.position.x;
-      point.y           = pose.position.y;
-      point.orientation = pose.orientation;
-
-      ROS_INFO(
-          "approach point %f %f %f %f",
-          point.orientation.x,
-          point.orientation.y,
-          point.orientation.z,
-          point.orientation.w
-      );
-      ROS_INFO(
-          "pose msg %f %f %f %f",
-          pose.orientation.x,
-          pose.orientation.y,
-          pose.orientation.z,
-          pose.orientation.w
-      );
-
-      return point;
     }
 };
 
