@@ -210,6 +210,9 @@ class Navigator {
         client->cancelAllGoals();
         navigateTo(approachPoint);
 
+        describeObject("face", "dumb");
+        ros::Duration(5.0).sleep();
+
         // Finished approaching, transition state
         currentExploringState = FSMExploringState::AT_FACE;
         facePublisher->publish(approachMsg);
@@ -249,6 +252,9 @@ class Navigator {
         ROS_INFO("Approaching poster");
         client->cancelAllGoals();
         navigateTo(approachPoint);
+
+        describeObject("poster", "dumb");
+        ros::Duration(5.0).sleep();
 
         // Finished approaching, transition state
         currentExploringState = FSMExploringState::AT_POSTER;
@@ -417,6 +423,21 @@ class Navigator {
       point.x           = pose.position.x;
       point.y           = pose.position.y;
       point.orientation = pose.orientation;
+
+      ROS_INFO(
+          "approach point %f %f %f %f",
+          point.orientation.x,
+          point.orientation.y,
+          point.orientation.z,
+          point.orientation.w
+      );
+      ROS_INFO(
+          "pose msg %f %f %f %f",
+          pose.orientation.x,
+          pose.orientation.y,
+          pose.orientation.z,
+          pose.orientation.w
+      );
 
       return point;
     }
