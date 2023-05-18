@@ -17,7 +17,7 @@
 #include <pcl_conversions/pcl_conversions.h>
 #include <ros/ros.h>
 #include <sensor_msgs/PointCloud2.h>
-#include <task2/RingPoseMsg.h>
+#include <task3/RingPoseMsg.h>
 #include <visualization_msgs/Marker.h>
 
 ros::Publisher cylinder_publisher;
@@ -192,7 +192,7 @@ void cloud_cb(const pcl::PCLPointCloud2ConstPtr &cloud_blob) {
     std::cerr << "point_map: " << point_map.point.x << " " << point_map.point.y << " "
               << point_map.point.z << std::endl;
 
-    task2::RingPoseMsg  cylinder_msg;
+    task3::RingPoseMsg  cylinder_msg;
     geometry_msgs::Pose pose;
 
     pose.position.x = point_map.point.x;
@@ -223,7 +223,7 @@ int main(int argc, char** argv) {
   ros::Subscriber sub = nh.subscribe("/camera/depth/points", 1, cloud_cb);
 
   // Create a ROS publisher for the output point cloud
-  cylinder_publisher = nh.advertise<task2::RingPoseMsg>("/custom_msgs/cylinder_detection", 1);
+  cylinder_publisher = nh.advertise<task3::RingPoseMsg>("/custom_msgs/cylinder_detection", 1);
   // Spin
   ros::spin();
 }

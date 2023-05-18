@@ -27,6 +27,8 @@ from facenet_pytorch import MTCNN, InceptionResnetV1
 from torchvision.transforms import ToTensor
 from task3.msg import FacePositionMsg, PosterContentMsg
 from tf.transformations import euler_from_quaternion, quaternion_from_euler
+import tf.transformations as tf_transformations
+import geometry_msgs.msg
 
 import easyocr
 
@@ -353,7 +355,7 @@ class face_localizer:
             yaw = euler[2]
 
             angle_to_target_map = angle_to_target + yaw
-            angle_to_target_map += np.pi / 2
+            #angle_to_target_map += np.pi / 2
 
             pose = Pose()
             pose.position.x = point_world.point.x
@@ -547,10 +549,15 @@ class face_localizer:
         print("ANGLE", angle)
         if pose is None:
             return
+
+        quaterninon = tf_transformations.quaternion_from_euler(0, 0, angle)
+        pose.orientation.x = quaterninon[0]
+        pose.orientation.y = quaterninon[1]
+        pose.orientation.z = quaterninon[2]
+        pose.orientation.w = quaterninon[3]
+
         fpm = FacePositionMsg()
-        fpm.x = pose.position.x
-        fpm.y = pose.position.y
-        fpm.z = pose.position.z
+        fpm.pose = pose
         fpm.angle = angle
 
         if is_poster:

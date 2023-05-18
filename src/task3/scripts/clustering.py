@@ -170,9 +170,9 @@ class Clustering:
         ###            ###
 
         # RINGS
-        self.green_ring_pub = rospy.Publisher(
-            "/custom_msgs/nav/green_ring_detected", RingPoseMsg, queue_size=10
-        )
+        #self.green_ring_pub = rospy.Publisher(
+        #    "/custom_msgs/nav/green_ring_detected", RingPoseMsg, queue_size=10
+        #)
         self.ring_pub = rospy.Publisher(
             "/custom_msgs/nav/ring_detected", RingPoseMsg, queue_size=10
         )
