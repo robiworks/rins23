@@ -7,7 +7,7 @@
 #include <opencv2/opencv.hpp>
 #include <ros/ros.h>
 #include <sensor_msgs/Image.h>
-#include <task2/RingPoseMsg.h>
+#include <task3/RingPoseMsg.h>
 #include <tf2/transform_datatypes.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 #include <tf2_ros/transform_listener.h>
@@ -44,7 +44,7 @@ void getDepths(
     int minY = std::max(cvRound(circles[i][1] - circles[i][2]), 0);
     int maxY = std::min(cvRound(circles[i][1] + circles[i][2]), depth_f->image.rows);
 
-    task2::RingPoseMsg pose;
+    task3::RingPoseMsg pose;
 
     pose.color.r = 0;
     pose.color.g = 0;
@@ -293,7 +293,7 @@ int main(int argc, char** argv) {
   sync.registerCallback(boost::bind(&image_callback, _1, _2));
 
   // Create a ROS publisher for the color pose
-  pose_pub = nh.advertise<task2::RingPoseMsg>("/custom_msgs/ring_detection", 1000);
+  pose_pub = nh.advertise<task3::RingPoseMsg>("/custom_msgs/ring_detection", 1000);
 
   // Create a buffer and listener for coordinate transforms
   tfBuffer   = new tf2_ros::Buffer;

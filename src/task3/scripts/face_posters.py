@@ -26,6 +26,9 @@ import torch
 from facenet_pytorch import MTCNN, InceptionResnetV1
 from torchvision.transforms import ToTensor
 from task3.msg import FacePositionMsg, PosterContentMsg
+from tf.transformations import euler_from_quaternion, quaternion_from_euler
+import tf.transformations as tf_transformations
+import geometry_msgs.msg
 
 import easyocr
 
@@ -321,9 +324,7 @@ class face_localizer:
                 print("[-] Poster already detected.")
 
     def get_pose(self, coords, dist, stamp, return_angle=False):
-        """Calculate the position of the detected face"""
-
-        k_f = 554  # kinect focal length in pixels
+        k_f = 554
 
         x1, x2, y1, y2 = coords
 
@@ -332,10 +333,8 @@ class face_localizer:
 
         angle_to_target = np.arctan2(face_x, k_f)
 
-        # Get the angles in the base_link relative coordinate system
         x, y = dist * np.cos(angle_to_target), dist * np.sin(angle_to_target)
 
-        # Define a stamped message for transformation - in the "camera rgb frame"
         point_s = PointStamped()
         point_s.point.x = -y
         point_s.point.y = 0
@@ -343,20 +342,32 @@ class face_localizer:
         point_s.header.frame_id = "camera_rgb_optical_frame"
         point_s.header.stamp = stamp
 
-        # Get the point in the "map" coordinate system
         try:
             point_world = self.tf_buf.transform(point_s, "map")
+
+            # Get the orientation of camera_rgb_optical_frame with respect to map frame
+            transform = self.tf_buf.lookup_transform(
+                "map", "camera_rgb_optical_frame", stamp
+            )
+            orientation = transform.transform.rotation
+            quaternion = [orientation.x, orientation.y, orientation.z, orientation.w]
+            euler = euler_from_quaternion(quaternion)
+            yaw = euler[2]
+
+            angle_to_target_map = angle_to_target + yaw
+            #angle_to_target_map += np.pi / 2
 
             pose = Pose()
             pose.position.x = point_world.point.x
             pose.position.y = point_world.point.y
             pose.position.z = point_world.point.z
+
         except Exception as e:
             print(e)
             pose = None
 
         if return_angle:
-            return pose, angle_to_target
+            return pose, angle_to_target_map
         else:
             return pose
 
@@ -493,7 +504,12 @@ class face_localizer:
 
     def find_faces(self):
         descriptors = self.detect_faces()
-        if descriptors is None:
+        if (
+            descriptors is None
+            or len(descriptors) == 0
+            or descriptors == 0
+            or isinstance(descriptors, int)
+        ):
             return
         for (
             face_descriptor,
@@ -524,14 +540,24 @@ class face_localizer:
 
         # Get the pose of the face
         pose, angle = self.get_pose(
-            (x1, x2, y1, y2), face_distance * 0.95, depth_time, return_angle=True
+            (x1, x2, y1, y2),
+            max(face_distance - 0.40, 0.30),
+            depth_time,
+            return_angle=True,
         )
+
+        print("ANGLE", angle)
         if pose is None:
             return
+
+        quaterninon = tf_transformations.quaternion_from_euler(0, 0, angle)
+        pose.orientation.x = quaterninon[0]
+        pose.orientation.y = quaterninon[1]
+        pose.orientation.z = quaterninon[2]
+        pose.orientation.w = quaterninon[3]
+
         fpm = FacePositionMsg()
-        fpm.x = pose.position.x
-        fpm.y = pose.position.y
-        fpm.z = pose.position.z
+        fpm.pose = pose
         fpm.angle = angle
 
         if is_poster:
