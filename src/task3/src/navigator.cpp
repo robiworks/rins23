@@ -79,6 +79,8 @@ class Navigator {
     /*   Public navigator functions                                          */
     /* --------------------------------------------------------------------- */
 
+    // Approach a point
+    // Used when approaching faces, posters, cylinders, rings, etc.
     void approachPoint(geometry_msgs::Pose point) {
       move_base_msgs::MoveBaseGoal goal;
 
@@ -88,7 +90,12 @@ class Navigator {
       // Set target pose
       goal.target_pose.pose = point;
 
-      ROS_INFO("Approaching: (x: %.3f, y: %.3f)", point.position.x, point.position.y);
+      ROS_INFO(
+          "Approaching: (x: %.3f, y: %.3f, rot_z: %.3f)",
+          point.position.x,
+          point.position.y,
+          point.orientation.z
+      );
       client->sendGoal(goal);
 
       // Start monitoring navigation
@@ -96,6 +103,7 @@ class Navigator {
     }
 
     // Navigate to a given point
+    // Used when exploring through interest points
     void navigateTo(NavigatorPoint point) {
       move_base_msgs::MoveBaseGoal goal;
 
@@ -107,7 +115,7 @@ class Navigator {
       goal.target_pose.pose.position.y    = point.y;
       goal.target_pose.pose.orientation.w = 1;
 
-      ROS_INFO("Navigating to: (x: %.3f, y: %.3f)", point.x, point.y);
+      ROS_INFO("Navigating to: (x: %.3f, y: %.3f, spin: %d)", point.x, point.y, point.spin);
       client->sendGoal(goal);
 
       // Start monitoring navigation
@@ -324,6 +332,9 @@ class Navigator {
     /* --------------------------------------------------------------------- */
 
     void monitorNavigation() {
+      // Monitor navigation at 5 Hz
+      ros::Rate rate(5);
+
       // Monitor navigation until it reaches a terminal state
       actionlib::SimpleClientGoalState goalState = client->getState();
       while (!goalState.isDone() && !isKilled && !isCancelled) {
@@ -345,8 +356,15 @@ class Navigator {
           ros::spinOnce();
         }
 
-        ros::Duration(0.25).sleep();
+        rate.sleep();
         goalState = client->getState();
+      }
+
+      if (isCancelled) {
+        // Reset cancelled state (happens when cancelling an interest goal to approach face/poster)
+        ROS_INFO("Cancelling interest point navigation monitoring to approach face or poster");
+        isCancelled = false;
+        return;
       }
 
       // Handle terminal states
@@ -369,15 +387,19 @@ class Navigator {
           break;
         // The action server successfully completed the goal
         case actionlib::SimpleClientGoalState::SUCCEEDED:
-          ROS_INFO("Successfully completed goal!");
+          if (currentMainState == FSMMainState::EXPLORING &&
+              (currentExploringState == FSMExploringState::APPROACHING_FACE ||
+               currentExploringState == FSMExploringState::APPROACHING_POSTER)) {
+            ROS_INFO("Finished approaching face or poster!");
+          } else {
+            ROS_INFO("Successfully navigated to interest point!");
+          }
           break;
         // The client lost contact with the action server
         case actionlib::SimpleClientGoalState::LOST:
           ROS_ERROR("Client lost contact with the action server!");
           break;
       }
-
-      isCancelled = false;
     }
 
     /* --------------------------------------------------------------------- */
