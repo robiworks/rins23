@@ -2,6 +2,7 @@
 
 #include <actionlib/client/simple_action_client.h>
 #include <actionlib/client/simple_client_goal_state.h>
+#include <algorithm>
 #include <cmath>
 #include <geometry_msgs/TransformStamped.h>
 #include <geometry_msgs/Twist.h>
@@ -13,6 +14,7 @@
 #include <sound_play/sound_play.h>
 #include <std_msgs/Bool.h>
 #include <stdlib.h>
+#include <string>
 #include <task3/FacePositionMsg.h>
 #include <task3/PosterContentMsg.h>
 #include <task3/RingPoseMsg.h>
@@ -139,7 +141,55 @@ class Navigator {
       if (currentMainState == FSMMainState::EXPLORING) {
         // Finished exploring the polygon
         currentExploringState = FSMExploringState::FINISHED;
+
+        // Transition to searching state
+        currentMainState = FSMMainState::SEARCHING;
+        startSearchingPhase();
+      } else {
+        ROS_ERROR(
+            "Invalid main state after finishing navigation through interest points! %d",
+            static_cast<int>(currentMainState)
+        );
       }
+    }
+
+    // Searching phase (main state) of FSM
+    void startSearchingPhase() {
+      // Find cylinder colors and their locations
+      std::string                col1 = toUpperCase(dialogueCylinderColors.at(0));
+      std::string                col2 = toUpperCase(dialogueCylinderColors.at(1));
+      task3::RingPoseMsgConstPtr cyl1, cyl2;
+
+      for (int i = 0; i < savedCylinders.size(); i++) {
+        task3::RingPoseMsgConstPtr item = savedCylinders.at(i);
+        std::string                col  = toUpperCase(item->color_name);
+
+        if (col1 == col) {
+          cyl1 = item;
+          continue;
+        }
+        if (col2 == col) {
+          cyl2 = item;
+          continue;
+        }
+      }
+
+      // Try cylinder 1 first
+      approachCylinder(cyl1);
+      // TODO If we found the robber, pick up the robber and go to parking state
+    }
+
+    // Approach a cylinder, look on top of it and continue depending on result
+    void approachCylinder(task3::RingPoseMsgConstPtr cylinder) {
+      // Approach the cylinder
+      currentSearchingState = FSMSearchingState::DRIVING;
+      ROS_INFO("Approaching cylinder: %s", cylinder->color_name);
+      approachPoint(cylinder->pose);
+
+      // Transition to AT_CYLINDER state
+      currentSearchingState = FSMSearchingState::AT_CYLINDER;
+      // TODO Extend arm and look on top of cylinder
+      currentSearchingState = FSMSearchingState::LOOKING;
     }
 
     // Clean up (used on SIGINT)
@@ -327,6 +377,9 @@ class Navigator {
     vector<task3::RingPoseMsgConstPtr> savedRings;
     vector<task3::RingPoseMsgConstPtr> savedCylinders;
 
+    // Saved cylinder colors from dialogue (fixed to 2 according to task 3 spec)
+    vector<std::string> dialogueCylinderColors;
+
     /* --------------------------------------------------------------------- */
     /*   Navigation monitoring                                               */
     /* --------------------------------------------------------------------- */
@@ -391,6 +444,8 @@ class Navigator {
               (currentExploringState == FSMExploringState::APPROACHING_FACE ||
                currentExploringState == FSMExploringState::APPROACHING_POSTER)) {
             ROS_INFO("Finished approaching face or poster!");
+          } else if (currentMainState == FSMMainState::SEARCHING && currentSearchingState == FSMSearchingState::DRIVING) {
+            ROS_INFO("Finished approaching cylinder!");
           } else {
             ROS_INFO("Successfully navigated to interest point!");
           }
@@ -445,7 +500,7 @@ class Navigator {
     }
 
     /* --------------------------------------------------------------------- */
-    /*   Logging utilities                                                   */
+    /*   Utilities                                                           */
     /* --------------------------------------------------------------------- */
 
     void warnInvalidState(std::string reason) {
@@ -454,6 +509,12 @@ class Navigator {
       ROS_WARN("-- Current exploring state: %d", static_cast<int>(currentExploringState));
       ROS_WARN("-- Current searching state: %d", static_cast<int>(currentSearchingState));
       ROS_WARN("-- Current parking state: %d", static_cast<int>(currentParkingState));
+    }
+
+    std::string toUpperCase(const std::string &str) {
+      std::string result = str;
+      std::transform(result.begin(), result.end(), result.begin(), ::toupper);
+      return result;
     }
 };
 
