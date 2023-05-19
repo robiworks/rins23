@@ -1,6 +1,7 @@
 #include <actionlib/client/simple_action_client.h>
 #include <actionlib/client/simple_client_goal_state.h>
 #include <cmath>
+#include <ctime>
 #include <geometry_msgs/TransformStamped.h>
 #include <geometry_msgs/Twist.h>
 #include <geometry_msgs/PoseStamped.h>
@@ -127,21 +128,12 @@ class Navigator {
 
     vector<NavigatorPoint> generateInterestPoints(int wallMargin, int pointMargin, int numClusters, ros::Publisher* marker_pub, ros::ServiceClient* proxy){
       // Read the map using cv2
-
-      // Print directory
-      system("pwd");
       Mat map = imread("./src/task3/config/map2_edited.pgm", IMREAD_GRAYSCALE);
-      // nav_msgs::OccupancyGrid::ConstPtr& mapData = ros::topic::waitForMessage<nav_msgs::OccupancyGrid>("map");
-
+  
       // Map information position and resolution
       double positionX = -12.2;
       double positionY = -12.2;
       double resolution = 0.05000000074505806;
-
-
-      // printf("Position: %f\n", positionX);
-      // printf("Position: %f\n", positionY);
-      // printf("Resolution: %f\n", resolution);
 
       // Create binary map where 254 is 1 and else is 0
       Mat binaryMap = map.clone();
@@ -157,7 +149,7 @@ class Navigator {
       for (int i = 0; i < map.rows; i++) {
         for (int j = 0; j < map.cols; j++) {
           totalPoints++;
-          if (map.at<uchar>(i, j) > 0) {
+          if (map.at<uchar>(i, j) == 254) {
             // Create a double point
             DoublePoint point;
             point.x = j;
@@ -167,29 +159,21 @@ class Navigator {
         }
       }
 
-      // printf("Map points: %d\n", mapPoints.size());
-
-      // Print first point
-      // printf("First point: %d, %d\n", mapPoints[0].x, mapPoints[0].y);
-      // Print last point
-      // printf("Last point: %d, %d\n", mapPoints[mapPoints.size() - 1].x, mapPoints[mapPoints.size() - 1].y);
-
-
-      // // List of points
-      // vector<NavigatorPoint> points;
+      // List of points
       vector<DoublePoint> points;
       while (points.size() < numClusters)
       {
         bool addPoint = true;
 
-        // Random index
+        // Select random point
         int randomIndex = rand() % mapPoints.size();
         DoublePoint selectedPoint = mapPoints[randomIndex];
+        // printf("Selected point: %f, %f\n", selectedPoint.x, selectedPoint.y);
 
         // Check if point is too close to wall by checking if all values in circle around point is 0
         for (int i = -wallMargin; i < wallMargin; i++) {
           for (int j = -wallMargin; j < wallMargin; j++) {
-            if (binaryMap.at<uchar>(selectedPoint.y + i, selectedPoint.x + j) <= 0) {
+            if (binaryMap.at<uchar>(selectedPoint.y + i, selectedPoint.x + j) == 0) {
               addPoint = false;
               break;
             }
@@ -209,17 +193,11 @@ class Navigator {
         // Add point if it is not too close to wall or other points
         if (addPoint) {
           points.push_back(selectedPoint);
+          // SHow point on map
+          // cv::circle(map, Point(selectedPoint.x, selectedPoint.y), 1, Scalar(0, 0, 255), 4);
         }
       }
-
-      // Show map with points
       // cv::imshow("Map", map);
-      // Scatter poitns
-      // for (int i = 0; i < points.size(); i++) {
-      //   cv::circle(map, Point(points[i].x, points[i].y), 1, Scalar(0, 0, 255), 4);
-      // }
-
-      // cv::imshow("Map with points", map);
       // cv::waitKey(0);
 
       // Create markerarray
@@ -227,42 +205,29 @@ class Navigator {
 
       // Go through points and calculate points.x and points.y
       for (int i = 0; i < points.size(); i++) {
+ 
+      }
+
+      // Rotate all points 90 degrees
+      for (int i = 0; i < points.size(); i++) {
         // Calculate x and y
         double x = positionX + points[i].x * resolution;
         double y = positionY + points[i].y * resolution;
 
         points[i].x = y;
-        points[i].y = x;
+        points[i].y = x;    
 
-        // printf("Point added: %f, %f\n", x, y);
-     
-      }
+        x = points[i].x;
+        y = points[i].y;
 
-      // Rotate all points 90 degrees
-      for (int i = 0; i < points.size(); i++) {
-        double x = points[i].x;
-        double y = points[i].y;
 
-        // printf("Point before rotation: %f, %f\n", x, y);
-
-        int deg = -90;
-        // Rotate using radians
-        float rad = deg * (M_PI / 180);
+        float rad = -90 * (M_PI / 180);
         // printf("Radians: %f\n", rad);
         points[i].x = x * cos(rad) - y * sin(rad);
         points[i].y = y * cos(rad) + x * sin(rad);
 
-        // points[i].x = x * cos(deg) - y * sin(deg);
-        // points[i].y = y * cos(deg) + x * sin(deg);
-
-        // printf("Point after rotation: %f, %f\n", points[i].x, points[i].y);
-
         points[i].y = points[i].y - 0.25;
-
-         // Create marker
       }
-
-
 
       // Create a poseStamped at 0, 0 
       geometry_msgs::PoseStamped origin = createPoseStamped(0, 0);
@@ -312,8 +277,7 @@ class Navigator {
       // Final points
       vector<geometry_msgs::PoseStamped> finalPoints = calculateAngles(orderedPoints);
 
-      // Create markerarray where first point is circle and last is X and rest are arrows
-    // NavigatorPoints
+      // Create markerarray for visualization
       vector<NavigatorPoint> navigatorPoints;
 
       for (int i = 0; i < finalPoints.size(); i++) {
@@ -340,7 +304,7 @@ class Navigator {
         marker.scale.x = 0.1;
         marker.scale.y = 0.1;
         marker.scale.z = 0.1;
-        marker.color.a = 1.0; // Don't forget to set the alpha!
+        marker.color.a = 1.0;
         marker.color.r = 0.0;
         marker.color.g = 1.0;
         marker.color.b = 0.0;
@@ -359,13 +323,8 @@ class Navigator {
         marker_array.markers.push_back(marker);
       }
 
-      // Wait 5sec
-      ros::Duration(5.0).sleep();
-
       marker_pub->publish(marker_array);
-      // printf("Closest point: %d, %d\n", points[closestPointIndex].x, points[closestPointIndex].y);
 
-      // navigator->navigateList(navigatorPoints);
       return navigatorPoints;
     }
 
@@ -483,7 +442,6 @@ class Navigator {
 
       // Call the service
       if (proxy->call(srv)) {
-        // Return the distance
         return srv.response.plan.poses.size();
       } else {
         ROS_ERROR("Failed to call service get_plan");
@@ -492,14 +450,13 @@ class Navigator {
     }
 
     geometry_msgs::PoseStamped getClosest(geometry_msgs::PoseStamped goal, vector<geometry_msgs::PoseStamped> points, ros::ServiceClient* proxy) {
-      // Initialize closest point
       geometry_msgs::PoseStamped closestPoint = points[0];
       float closestDistance = calculateDistance(goal, closestPoint, proxy);
 
       // Go through all points and find the closest one
       for (int i = 1; i < points.size(); i++) {
         float distance = calculateDistance(goal, points[i], proxy);
-        // printf("Distance: %f\n", distance);
+
         if (distance < closestDistance) {
           closestPoint = points[i];
           closestDistance = distance;
@@ -793,7 +750,7 @@ int main(int argc, char* argv[]) {
 
     // Initialize Navigator
     navigator = new Navigator(&cmdvelPub, 4, 4);
-    vector<NavigatorPoint> interestPoints = navigator->generateInterestPoints(10, 18, 9, &marker_pub, &plan_proxy);
+    vector<NavigatorPoint> interestPoints = navigator->generateInterestPoints(10, 18, 10, &marker_pub, &plan_proxy);
 
   // Navigate through interest points
   navigator->navigateList(interestPoints);
