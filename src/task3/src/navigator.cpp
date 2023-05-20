@@ -1,16 +1,24 @@
 #include <actionlib/client/simple_action_client.h>
 #include <actionlib/client/simple_client_goal_state.h>
 #include <cmath>
+#include <ctime>
 #include <geometry_msgs/TransformStamped.h>
 #include <geometry_msgs/Twist.h>
+#include <geometry_msgs/PoseStamped.h>
 #include <move_base_msgs/MoveBaseAction.h>
 #include <nav_msgs/GetMap.h>
 #include <opencv2/core/core.hpp>
+#include <opencv2/opencv.hpp>
 #include <ros/ros.h>
 #include <signal.h>
 #include <sound_play/sound_play.h>
 #include <stdlib.h>
 #include <task2/RingPoseMsg.h>
+#include <nav_msgs/OccupancyGrid.h>
+#include <nav_msgs/GetPlan.h>
+#include <visualization_msgs/Marker.h>
+#include <visualization_msgs/MarkerArray.h>
+#include <tf/transform_datatypes.h>
 
 using namespace std;
 using namespace cv;
@@ -27,6 +35,13 @@ struct NavigatorPoint {
     double y;
     bool   spin;
 };
+
+struct DoublePoint
+{
+    double x;
+    double y;
+};
+
 
 enum NavigatorState {
   IDLE,       // Navigation is idle, only applicable at the start
@@ -111,6 +126,218 @@ class Navigator {
       ringsFound++;
     }
 
+    vector<NavigatorPoint> generateInterestPoints(int wallMargin, int pointMargin, int numClusters, ros::Publisher* marker_pub, ros::ServiceClient* proxy){
+      // Read the map using cv2
+      Mat map = imread("./src/task3/config/map2_edited.pgm", IMREAD_GRAYSCALE);
+  
+      // Map information position and resolution
+      double positionX = -12.2;
+      double positionY = -12.2;
+      double resolution = 0.05000000074505806;
+
+      // Create binary map where 254 is 1 and else is 0
+      Mat binaryMap = map.clone();
+      binaryMap = binaryMap == 254;
+
+      // Erode the map
+      Mat kernel = getStructuringElement(MORPH_ELLIPSE, Size(3,3));
+      erode(binaryMap, binaryMap, kernel);
+
+      // Create a list of all (x, y) coordinates of the map. binarymap where values are 1
+      vector<DoublePoint> mapPoints;
+      int totalPoints = 0;
+      for (int i = 0; i < map.rows; i++) {
+        for (int j = 0; j < map.cols; j++) {
+          totalPoints++;
+          if (map.at<uchar>(i, j) == 254) {
+            // Create a double point
+            DoublePoint point;
+            point.x = j;
+            point.y = i;
+            mapPoints.push_back(point);
+          }
+        }
+      }
+
+      // List of points
+      vector<DoublePoint> points;
+      while (points.size() < numClusters)
+      {
+        bool addPoint = true;
+
+        // Select random point
+        int randomIndex = rand() % mapPoints.size();
+        DoublePoint selectedPoint = mapPoints[randomIndex];
+        // printf("Selected point: %f, %f\n", selectedPoint.x, selectedPoint.y);
+
+        // Check if point is too close to wall by checking if all values in circle around point is 0
+        for (int i = -wallMargin; i < wallMargin; i++) {
+          for (int j = -wallMargin; j < wallMargin; j++) {
+            if (binaryMap.at<uchar>(selectedPoint.y + i, selectedPoint.x + j) == 0) {
+              addPoint = false;
+              break;
+            }
+          }
+        }
+
+        // Check if point is too close to other points
+        if (points.size() > 0){
+          for (int i = 0; i < points.size(); i++) {
+            if (sqrt(pow(selectedPoint.x - points[i].x, 2) + pow(selectedPoint.y - points[i].y, 2)) < pointMargin) {
+              addPoint = false;
+              break;
+            }
+          }
+        }
+
+        // Add point if it is not too close to wall or other points
+        if (addPoint) {
+          points.push_back(selectedPoint);
+          // SHow point on map
+          // cv::circle(map, Point(selectedPoint.x, selectedPoint.y), 1, Scalar(0, 0, 255), 4);
+        }
+      }
+      // cv::imshow("Map", map);
+      // cv::waitKey(0);
+
+      // Create markerarray
+      visualization_msgs::MarkerArray marker_array;
+
+      // Go through points and calculate points.x and points.y
+      for (int i = 0; i < points.size(); i++) {
+ 
+      }
+
+      // Rotate all points 90 degrees
+      for (int i = 0; i < points.size(); i++) {
+        // Calculate x and y
+        double x = positionX + points[i].x * resolution;
+        double y = positionY + points[i].y * resolution;
+
+        points[i].x = y;
+        points[i].y = x;    
+
+        x = points[i].x;
+        y = points[i].y;
+
+
+        float rad = -90 * (M_PI / 180);
+        // printf("Radians: %f\n", rad);
+        points[i].x = x * cos(rad) - y * sin(rad);
+        points[i].y = y * cos(rad) + x * sin(rad);
+
+        points[i].y = points[i].y - 0.25;
+      }
+
+      // Create a poseStamped at 0, 0 
+      geometry_msgs::PoseStamped origin = createPoseStamped(0, 0);
+
+      vector<geometry_msgs::PoseStamped> poseStampedPoints;
+      for (int i = 0; i < points.size(); i++) {
+        geometry_msgs::PoseStamped pose = createPoseStamped(points[i].x, points[i].y);
+        poseStampedPoints.push_back(pose);
+      }
+
+      // Closest point
+      geometry_msgs::PoseStamped startPoint = getClosest(origin, poseStampedPoints, proxy);
+
+      // Ordered points
+      vector<geometry_msgs::PoseStamped> orderedPoints;
+      orderedPoints.push_back(startPoint);
+
+      // Remove start point from poseStampedPoints
+      for (int i = 0; i < poseStampedPoints.size(); i++) {
+        if (poseStampedPoints[i].pose.position.x == startPoint.pose.position.x && poseStampedPoints[i].pose.position.y == startPoint.pose.position.y) {
+          poseStampedPoints.erase(poseStampedPoints.begin() + i);
+          break;
+        }
+      }
+
+      // Go through all points and find the closest one
+      while (poseStampedPoints.size() > 0)
+      {
+        //  Prev point
+        geometry_msgs::PoseStamped prevPoint = orderedPoints[orderedPoints.size() - 1];
+
+        // Closest point
+        geometry_msgs::PoseStamped closestPoint = getClosest(prevPoint, poseStampedPoints, proxy);
+
+        // Add closest point to orderedPoints
+        orderedPoints.push_back(closestPoint);
+
+        // Remove closest point from poseStampedPoints
+        for (int i = 0; i < poseStampedPoints.size(); i++) {
+          if (poseStampedPoints[i].pose.position.x == closestPoint.pose.position.x && poseStampedPoints[i].pose.position.y == closestPoint.pose.position.y) {
+            poseStampedPoints.erase(poseStampedPoints.begin() + i);
+            break;
+          }
+        }
+      }
+
+      // Final points
+      vector<geometry_msgs::PoseStamped> finalPoints = calculateAngles(orderedPoints);
+
+      // Create markerarray for visualization
+      vector<NavigatorPoint> navigatorPoints;
+
+      for (int i = 0; i < finalPoints.size(); i++) {
+        NavigatorPoint point;
+        point.x = finalPoints[i].pose.position.x;
+        point.y = finalPoints[i].pose.position.y;
+        point.spin = true;
+
+        navigatorPoints.push_back(point);
+
+
+        visualization_msgs::Marker marker;
+        marker.header.frame_id = "map";
+        marker.header.stamp = ros::Time();
+        marker.ns = "points";
+        marker.id = i;
+
+        marker.action = visualization_msgs::Marker::ADD;
+        marker.pose.position.x = finalPoints[i].pose.position.x;
+        marker.pose.position.y = finalPoints[i].pose.position.y;
+        marker.pose.position.z = 0.0;
+        marker.pose.orientation.w = finalPoints[i].pose.orientation.w;
+        marker.pose.orientation.z = finalPoints[i].pose.orientation.z;
+        marker.scale.x = 0.1;
+        marker.scale.y = 0.1;
+        marker.scale.z = 0.1;
+        marker.color.a = 1.0;
+        marker.color.r = 0.0;
+        marker.color.g = 1.0;
+        marker.color.b = 0.0;
+
+        if (i == 0) {
+          marker.type = visualization_msgs::Marker::SPHERE;
+        } else if (i == finalPoints.size() - 1) {
+          marker.type = visualization_msgs::Marker::CUBE;
+        } else {
+          marker.type = visualization_msgs::Marker::ARROW;
+          marker.scale.x = 0.1;
+          marker.scale.y = 0.05;
+          marker.scale.z = 0.05;
+        }
+
+        marker_array.markers.push_back(marker);
+      }
+
+      marker_pub->publish(marker_array);
+
+      return navigatorPoints;
+    }
+
+    geometry_msgs::PoseStamped createPoseStamped(double x, double y) {
+      geometry_msgs::PoseStamped pose;
+      pose.header.frame_id = "map";
+      pose.pose.position.x = x;
+      pose.pose.position.y = y;
+      pose.pose.orientation.w = 1.0;
+
+      return pose;
+    }
+
     // Callback to handle /custom_msgs/nav/green_ring_detected
     void greenRingCallback(const task2::RingPoseMsgConstPtr &msg) {
       ROS_WARN(
@@ -168,6 +395,76 @@ class Navigator {
     int                      NUMBER_OF_CYLINDERS = 3;
     int                      ringsFound      = 0;
     int                      cylindersFound  = 0;
+
+    vector<geometry_msgs::PoseStamped> calculateAngles(vector<geometry_msgs::PoseStamped> points) {
+
+      // Final points
+      vector<geometry_msgs::PoseStamped> finalPoints;
+
+      // Go through all points and calculate the angle
+      for (int i = 0; i < points.size(); i++) {
+        // Point
+        geometry_msgs::PoseStamped point = points[i];
+        // Next point using %
+        geometry_msgs::PoseStamped nextPoint = points[(i + 1) % points.size()];
+
+        // Calculate angle
+        double angle = atan2(nextPoint.pose.position.y - point.pose.position.y, nextPoint.pose.position.x - point.pose.position.x);
+
+        // Quaternion
+        geometry_msgs::Quaternion q = tf::createQuaternionMsgFromYaw(angle);
+
+        // Get rotations z and w 
+        double z = q.z;
+        double w = q.w;
+
+        // Create a new point
+        geometry_msgs::PoseStamped newPoint;
+        newPoint.pose.position.x = point.pose.position.x;
+        newPoint.pose.position.y = point.pose.position.y;
+        newPoint.pose.position.z = point.pose.position.z;
+        newPoint.pose.orientation.z = z;
+        newPoint.pose.orientation.w = w;
+
+        // Add point to finalPoints
+        finalPoints.push_back(newPoint);
+      }
+
+      return finalPoints;
+    }
+
+    float calculateDistance(geometry_msgs::PoseStamped pose1, geometry_msgs::PoseStamped pose2, ros::ServiceClient* proxy) {
+      // Create a service proxy to get plan
+      nav_msgs::GetPlan srv;
+      srv.request.start = pose1;
+      srv.request.goal = pose2;
+      srv.request.tolerance = 0;
+
+      // Call the service
+      if (proxy->call(srv)) {
+        return srv.response.plan.poses.size();
+      } else {
+        ROS_ERROR("Failed to call service get_plan");
+        return 0;
+      }
+    }
+
+    geometry_msgs::PoseStamped getClosest(geometry_msgs::PoseStamped goal, vector<geometry_msgs::PoseStamped> points, ros::ServiceClient* proxy) {
+      geometry_msgs::PoseStamped closestPoint = points[0];
+      float closestDistance = calculateDistance(goal, closestPoint, proxy);
+
+      // Go through all points and find the closest one
+      for (int i = 1; i < points.size(); i++) {
+        float distance = calculateDistance(goal, points[i], proxy);
+
+        if (distance < closestDistance) {
+          closestPoint = points[i];
+          closestDistance = distance;
+        }
+      }
+
+      return closestPoint;
+    }
 
     void monitorNavigation() {
       // Monitor navigation until it reaches a terminal state
@@ -407,23 +704,25 @@ int main(int argc, char* argv[]) {
   //   {-0.6259070038795471,   2.225338935852051,  true},
   //   {-1.4852330684661865, 0.15332327783107758,  true},
   // };
-  vector<NavigatorPoint> interestPoints {
-    {  0.3815518319606781,  -1.021867036819458, false},
-    {  2.1781322956085205,  -1.012013554573059, false},
-    {  2.6001322956085205,  -0.3131423993110657, true},
-    {   3.067493640899658,  0.7811423993110657,  true},
-    {  1.4856997728347778,  0.9578039050102234,  true},
-    {  2.3523111808776855,   2.510785011291504,  true},
-    {-0.39255309104919434,  2.8976528644561768,  true},
-    { -0.9696336388587952,  1.8396551609039307,  true},
-    { -1.4852330684661865, 0.15332327783107758,  true},
-  };
+
+
+  // vector<NavigatorPoint> interestPoints {
+  //   {  0.3815518319606781,  -1.021867036819458, false},
+  //   {  2.1781322956085205,  -1.012013554573059, false},
+  //   {  2.6001322956085205,  -0.3131423993110657, true},
+  //   {   3.067493640899658,  0.7811423993110657,  true},
+  //   {  1.4856997728347778,  0.9578039050102234,  true},
+  //   {  2.3523111808776855,   2.510785011291504,  true},
+  //   {-0.39255309104919434,  2.8976528644561768,  true},
+  //   { -0.9696336388587952,  1.8396551609039307,  true},
+  //   { -1.4852330684661865, 0.15332327783107758,  true},
+  // };
 
   // Initialize publisher for robot rotation
   ros::Publisher cmdvelPub = nh.advertise<geometry_msgs::Twist>("/cmd_vel_mux/input/navi", 10);
 
-  // Initialize Navigator
-  navigator = new Navigator(&cmdvelPub, 4, 4);
+
+
 
   // Initialize ring detection subscribers
   ros::Subscriber greenRingSub = nh.subscribe(
@@ -442,6 +741,16 @@ int main(int argc, char* argv[]) {
       &Navigator::cylinderCallback,
       navigator
   );
+
+    // Marker publisher
+    ros::Publisher marker_pub = nh.advertise<visualization_msgs::MarkerArray>("/marker/points", 10);
+
+    // Get plan proxy
+    ros::ServiceClient plan_proxy = nh.serviceClient<nav_msgs::GetPlan>("/move_base/make_plan");
+
+    // Initialize Navigator
+    navigator = new Navigator(&cmdvelPub, 4, 4);
+    vector<NavigatorPoint> interestPoints = navigator->generateInterestPoints(10, 18, 10, &marker_pub, &plan_proxy);
 
   // Navigate through interest points
   navigator->navigateList(interestPoints);

@@ -91,4 +91,6 @@ CATKIN_IGNORE
 .vscode/
 src/task2/scripts/rings.py
 
+src/task3/src/navigator.txt
+
 # End of https://www.toptal.com/developers/gitignore/api/ros,c++
