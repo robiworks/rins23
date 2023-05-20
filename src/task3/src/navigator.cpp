@@ -309,9 +309,31 @@ class Navigator {
         // Finished approaching, transition state
         currentExploringState = FSMExploringState::AT_FACE;
 
-        // TODO Handle dialogue flow, save if informative, then proceed with exploration
-        currentExploringState = FSMExploringState::DIALOGUE;
-        currentExploringState = FSMExploringState::SAVE_DIALOGUE;
+        task3::FaceDialogueSrv srv;
+        if (faceDialogueService->call(srv)) {
+          // Dialogue performed in this step
+          currentExploringState = FSMExploringState::DIALOGUE;
+          ROS_INFO("Face dialogue service called successfully");
+          ROS_INFO(
+              "useful: %d, color 1: %s, color 2: %s",
+              srv.response.useful,
+              srv.response.color1.c_str(),
+              srv.response.color2.c_str()
+          );
+
+          if (srv.response.useful) {
+            // Save colors from dialogue in this step
+            currentExploringState = FSMExploringState::SAVE_DIALOGUE;
+            ROS_INFO("Saving colors from dialogue");
+
+            dialogueCylinderColors.push_back(srv.response.color1);
+            dialogueCylinderColors.push_back(srv.response.color2);
+          }
+        } else {
+          ROS_ERROR("Failed to call poster exploration service");
+        }
+
+        // Go back to exploring
         currentExploringState = FSMExploringState::EXPLORING;
       } else {
         warnInvalidState("Cannot process face detections outside Exploring.Exploring!");
@@ -640,22 +662,22 @@ int main(int argc, char* argv[]) {
 
   // Vector of interest points in the map
   vector<NavigatorPoint> interestPoints {
-  {-0.05452026426792145, -0.798535943031311, true},
-  {1.9770352840423584, -0.9166015386581421, true},
-  {2.5234475135803223, -0.3696010112762451, true},
-  {2.9102773666381836, 0.5500531792640686, true},
-  {1.6900173425674438, 0.8855782747268677, true},
-  {1.1343450546264648, 0.5771540403366089, true},
-  {1.733999252319336, 1.1773782968521118, true},
-  {2.2268130779266357, 1.7919968366622925, true},
-  {1.8839367628097534, 1.0576781034469604, true},
-  {0.955916702747345, 1.654266595840454, true},
-  {0.8462879061698914, 2.8483240604400635, true},
-  {0.0020688343793153763, 3.0011651515960693, true},
-  {-0.652366042137146, 2.405224323272705, true},
-  {-0.9533275365829468, 1.5022640228271484, true},
-  {-1.3491424322128296, 0.5857433080673218, true},
-};
+    { -0.05452026426792145,  -0.798535943031311, true},
+    {   1.9770352840423584, -0.9166015386581421, true},
+    {   2.5234475135803223, -0.3696010112762451, true},
+    {   2.9102773666381836,  0.5500531792640686, true},
+    {   1.6900173425674438,  0.8855782747268677, true},
+    {   1.1343450546264648,  0.5771540403366089, true},
+    {    1.733999252319336,  1.1773782968521118, true},
+    {   2.2268130779266357,  1.7919968366622925, true},
+    {   1.8839367628097534,  1.0576781034469604, true},
+    {    0.955916702747345,   1.654266595840454, true},
+    {   0.8462879061698914,  2.8483240604400635, true},
+    {0.0020688343793153763,  3.0011651515960693, true},
+    {   -0.652366042137146,   2.405224323272705, true},
+    {  -0.9533275365829468,  1.5022640228271484, true},
+    {  -1.3491424322128296,  0.5857433080673218, true},
+  };
 
   // Initialize publisher for robot rotation
   ros::Publisher cmdvelPub = nh.advertise<geometry_msgs::Twist>("/cmd_vel_mux/input/navi", 10);
