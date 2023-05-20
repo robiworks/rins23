@@ -56,6 +56,8 @@ add_service_files(
     FILES
     PosterExplorationSrv.srv
     FaceDialogueSrv.srv
+    ArmExtendSrv.srv
+    ArmParkingSrv.srv
 )
 
 generate_messages(
