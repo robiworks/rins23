@@ -170,9 +170,9 @@ class Clustering:
         ###            ###
 
         # RINGS
-        #self.green_ring_pub = rospy.Publisher(
+        # self.green_ring_pub = rospy.Publisher(
         #    "/custom_msgs/nav/green_ring_detected", RingPoseMsg, queue_size=10
-        #)
+        # )
         self.ring_pub = rospy.Publisher(
             "/custom_msgs/nav/ring_detected", RingPoseMsg, queue_size=10
         )
@@ -338,21 +338,11 @@ class Clustering:
 
         is_new = self.ring_holder.update_ring(rpm, color)
 
-        if color == "Green":
-            rpm.color_name = "Green"
-            if is_new:
-                print("Green ring detected at: ", rpm)
-                self.green_ring_pub.publish(rpm)
-                # self.color_pub.publish(ColorMsg(color=color))
-                self.publish_ring_marker(rpm)
-            print("Green ring detected at: ", rpm)
-        else:
-            rpm.color_name = color
-            if is_new:
-                self.ring_pub.publish(rpm)
-                # self.color_pub.publish(ColorMsg(color=color))
-                self.publish_ring_marker(rpm)
-            print(f"{color} ring detected at:", rpm)
+        rpm.color_name = color
+        if is_new:
+            self.ring_pub.publish(rpm)
+            self.publish_ring_marker(rpm)
+        print(f"{color} ring detected at:", rpm)
 
     def color_reverse_lookup(self, rgb, type="ring"):
         def closest_color_ring(rgb):
