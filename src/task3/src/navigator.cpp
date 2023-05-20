@@ -15,6 +15,8 @@
 #include <std_msgs/Bool.h>
 #include <stdlib.h>
 #include <string>
+#include <task3/ArmExtendSrv.h>
+#include <task3/ArmParkingSrv.h>
 #include <task3/FaceDialogueSrv.h>
 #include <task3/FacePositionMsg.h>
 #include <task3/PosterExplorationSrv.h>
@@ -78,13 +80,17 @@ class Navigator {
 
     Navigator(
         ros::Publisher*     cmdvelPub,
-        ros::ServiceClient* posterExplorationPub,
-        ros::ServiceClient* faceDialoguePub
+        ros::ServiceClient* posterExplorationSrv,
+        ros::ServiceClient* faceDialogueSrv,
+        ros::ServiceClient* armExtendSrv,
+        ros::ServiceClient* armParkingSrv
     )
         : Navigator() {
       cmdvelPublisher          = cmdvelPub;
-      posterExplorationService = posterExplorationPub;
-      faceDialogueService      = faceDialoguePub;
+      posterExplorationService = posterExplorationSrv;
+      faceDialogueService      = faceDialogueSrv;
+      armExtendService         = armExtendSrv;
+      armParkingService        = armParkingSrv;
     }
 
     /* --------------------------------------------------------------------- */
@@ -407,6 +413,8 @@ class Navigator {
     // Services
     ros::ServiceClient* posterExplorationService;
     ros::ServiceClient* faceDialogueService;
+    ros::ServiceClient* armExtendService;
+    ros::ServiceClient* armParkingService;
 
     // Status booleans
     bool isKilled    = false;
@@ -687,9 +695,19 @@ int main(int argc, char* argv[]) {
       nh.serviceClient<task3::PosterExplorationSrv>("/poster_exploration");
   ros::ServiceClient faceDialogueService =
       nh.serviceClient<task3::FaceDialogueSrv>("/face_dialogue");
+  ros::ServiceClient armExtendService =
+      nh.serviceClient<task3::ArmExtendSrv>("/arm_control/extend");
+  ros::ServiceClient armParkingService =
+      nh.serviceClient<task3::ArmParkingSrv>("/arm_control/parking_search");
 
   // Initialize Navigator
-  navigator = new Navigator(&cmdvelPub, &posterExplorationService, &faceDialogueService);
+  navigator = new Navigator(
+      &cmdvelPub,
+      &posterExplorationService,
+      &faceDialogueService,
+      &armExtendService,
+      &armParkingService
+  );
 
   // Initialize subscribers
   ros::Subscriber ringSub =
