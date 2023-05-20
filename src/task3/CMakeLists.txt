@@ -53,6 +53,12 @@ add_message_files(
   FacePositionMsg.msg
 )
 
+add_service_files(
+    FILES
+    ArmExtendSrv.srv
+    ArmParkingSrv.srv
+)
+
 generate_messages(
   DEPENDENCIES
   std_msgs
