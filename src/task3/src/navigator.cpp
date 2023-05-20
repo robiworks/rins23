@@ -78,13 +78,11 @@ class Navigator {
 
     Navigator(
         ros::Publisher*     cmdvelPub,
-        ros::Publisher*     facePub,
         ros::ServiceClient* posterExplorationPub,
         ros::ServiceClient* faceDialoguePub
     )
         : Navigator() {
       cmdvelPublisher          = cmdvelPub;
-      facePublisher            = facePub;
       posterExplorationService = posterExplorationPub;
       faceDialogueService      = faceDialoguePub;
     }
@@ -310,7 +308,6 @@ class Navigator {
 
         // Finished approaching, transition state
         currentExploringState = FSMExploringState::AT_FACE;
-        facePublisher->publish(approachMsg);
 
         // TODO Handle dialogue flow, save if informative, then proceed with exploration
         currentExploringState = FSMExploringState::DIALOGUE;
@@ -384,7 +381,6 @@ class Navigator {
 
     // Publishers
     ros::Publisher* cmdvelPublisher;
-    ros::Publisher* facePublisher;
 
     // Services
     ros::ServiceClient* posterExplorationService;
@@ -658,7 +654,6 @@ int main(int argc, char* argv[]) {
 
   // Initialize publisher for robot rotation
   ros::Publisher cmdvelPub = nh.advertise<geometry_msgs::Twist>("/cmd_vel_mux/input/navi", 10);
-  ros::Publisher facePub   = nh.advertise<std_msgs::Bool>("/custom_msgs/face_approached", 10);
 
   // Initialize services
   ros::ServiceClient posterExplorationService =
@@ -667,7 +662,7 @@ int main(int argc, char* argv[]) {
       nh.serviceClient<task3::FaceDialogueSrv>("/face_dialogue");
 
   // Initialize Navigator
-  navigator = new Navigator(&cmdvelPub, &facePub, &posterExplorationService, &faceDialogueService);
+  navigator = new Navigator(&cmdvelPub, &posterExplorationService, &faceDialogueService);
 
   // Initialize subscribers
   ros::Subscriber ringSub =
