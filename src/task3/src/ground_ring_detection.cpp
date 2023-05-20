@@ -12,6 +12,7 @@
 #include <trajectory_msgs/JointTrajectoryPoint.h>
 #include <visualization_msgs/Marker.h>
 #include <visualization_msgs/MarkerArray.h>
+#include <task3/ArmExtendSrv.h>
 
 using namespace message_filters;
 using namespace sensor_msgs;
@@ -27,6 +28,8 @@ int                             detection_count = 0;
 
 bool debug;
 bool search = false;
+
+bool arm_extended = false;
 
 ros::Publisher marker_pub;
 ros::Publisher ground_ring_pub;
@@ -331,6 +334,67 @@ void stop_green_callback(task3::RingPoseMsg pose) {
   search = false;
 }
 
+
+bool extendArmCallback(task3::ArmExtendSrv::Request &req, task3::ArmExtendSrv::Response &res) {
+  ROS_WARN("Extend arm callback");
+  bool extend = req.extend;
+  if (extend) 
+  {
+    // Move the arm to the position
+    trajectory_msgs::JointTrajectory      trajectory;
+    trajectory_msgs::JointTrajectoryPoint point;
+
+    trajectory.joint_names.push_back("arm_shoulder_pan_joint");
+    trajectory.joint_names.push_back("arm_shoulder_lift_joint");
+    trajectory.joint_names.push_back("arm_elbow_flex_joint");
+    trajectory.joint_names.push_back("arm_wrist_flex_joint");
+
+    point.positions.push_back(0);
+    point.positions.push_back(0.3);
+    point.positions.push_back(0.9);
+    point.positions.push_back(0);
+
+    point.time_from_start = ros::Duration(1.0);
+
+    trajectory.points.push_back(point);
+
+    arm_pub.publish(trajectory);
+
+    //wait 2 sec
+    ros::Duration(2.0).sleep();
+    arm_extended = true;
+  }else{
+    // Move the arm to the position
+    trajectory_msgs::JointTrajectory      trajectory;
+    trajectory_msgs::JointTrajectoryPoint point;
+
+    trajectory.joint_names.push_back("arm_shoulder_pan_joint");
+    trajectory.joint_names.push_back("arm_shoulder_lift_joint");
+    trajectory.joint_names.push_back("arm_elbow_flex_joint");
+    trajectory.joint_names.push_back("arm_wrist_flex_joint");
+
+    point.positions.push_back(0);
+    point.positions.push_back(0);
+    point.positions.push_back(0);
+    point.positions.push_back(0);
+
+    point.time_from_start = ros::Duration(1.0);
+
+    trajectory.points.push_back(point);
+
+    arm_pub.publish(trajectory);
+
+    //wait 2 sec
+    ros::Duration(2.0).sleep();
+    arm_extended = false;
+  }
+  
+  res.extended = arm_extended;
+
+  return true;
+}
+
+
 int main(int argc, char** argv) {
   ros::init(argc, argv, "ground_ring_detection");
   ros::NodeHandle nh("~");
@@ -339,8 +403,11 @@ int main(int argc, char** argv) {
 
   bool debug_param = false;
 
-  nh.getParam("depth", depth_topic);
-  nh.getParam("rgb", rgb_topic);
+  // nh.getParam("depth", depth_topic);
+  // nh.getParam("rgb", rgb_topic);
+  depth_topic = "/arm_camera/depth/image_raw";
+  rgb_topic = "/arm_camera/rgb/image_raw";
+
   nh.getParam("cam_info", cam_info);
   nh.getParam("debug", debug_param);
 
@@ -356,6 +423,10 @@ int main(int argc, char** argv) {
   ROS_INFO("Depth topic: %s", depth_topic.c_str());
   ROS_INFO("RGB topic: %s", rgb_topic.c_str());
   ROS_INFO("Debug: %s", debug ? "true" : "false");
+
+  // Create a service for extending the arm
+  ros::ServiceServer arm_service = nh.advertiseService("/arm_control/extend", extendArmCallback);
+
 
   marker_pub = nh.advertise<visualization_msgs::MarkerArray>("ground_ring_marker", 10000);
 
