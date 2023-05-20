@@ -55,6 +55,7 @@ add_message_files(
 add_service_files(
     FILES
     PosterExplorationSrv.srv
+    FaceDialogueSrv.srv
 )
 
 generate_messages(

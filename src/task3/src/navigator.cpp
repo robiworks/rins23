@@ -15,8 +15,8 @@
 #include <std_msgs/Bool.h>
 #include <stdlib.h>
 #include <string>
+#include <task3/FaceDialogueSrv.h>
 #include <task3/FacePositionMsg.h>
-#include <task3/PosterContentMsg.h>
 #include <task3/PosterExplorationSrv.h>
 #include <task3/RingPoseMsg.h>
 
@@ -78,13 +78,13 @@ class Navigator {
 
     Navigator(
         ros::Publisher*     cmdvelPub,
-        ros::Publisher*     facePub,
-        ros::ServiceClient* posterExplorationPub
+        ros::ServiceClient* posterExplorationPub,
+        ros::ServiceClient* faceDialoguePub
     )
         : Navigator() {
       cmdvelPublisher          = cmdvelPub;
-      facePublisher            = facePub;
       posterExplorationService = posterExplorationPub;
+      faceDialogueService      = faceDialoguePub;
     }
 
     /* --------------------------------------------------------------------- */
@@ -308,7 +308,6 @@ class Navigator {
 
         // Finished approaching, transition state
         currentExploringState = FSMExploringState::AT_FACE;
-        facePublisher->publish(approachMsg);
 
         // TODO Handle dialogue flow, save if informative, then proceed with exploration
         currentExploringState = FSMExploringState::DIALOGUE;
@@ -382,11 +381,10 @@ class Navigator {
 
     // Publishers
     ros::Publisher* cmdvelPublisher;
-    ros::Publisher* facePublisher;
-    ros::Publisher* posterPublisher;
 
     // Services
     ros::ServiceClient* posterExplorationService;
+    ros::ServiceClient* faceDialogueService;
 
     // Status booleans
     bool isKilled    = false;
@@ -402,9 +400,7 @@ class Navigator {
     vector<task3::RingPoseMsgConstPtr> savedRings;
     vector<task3::RingPoseMsgConstPtr> savedCylinders;
     vector<PosterData>                 savedPosters;
-
-    // Saved cylinder colors from dialogue (fixed to 2 according to task 3 spec)
-    vector<std::string> dialogueCylinderColors;
+    vector<std::string>                dialogueCylinderColors; // Should have exactly 2 items
 
     /* --------------------------------------------------------------------- */
     /*   Navigation monitoring                                               */
@@ -663,14 +659,15 @@ int main(int argc, char* argv[]) {
 
   // Initialize publisher for robot rotation
   ros::Publisher cmdvelPub = nh.advertise<geometry_msgs::Twist>("/cmd_vel_mux/input/navi", 10);
-  ros::Publisher facePub   = nh.advertise<std_msgs::Bool>("/custom_msgs/face_approached", 10);
 
   // Initialize services
   ros::ServiceClient posterExplorationService =
       nh.serviceClient<task3::PosterExplorationSrv>("/poster_exploration");
+  ros::ServiceClient faceDialogueService =
+      nh.serviceClient<task3::FaceDialogueSrv>("/face_dialogue");
 
   // Initialize Navigator
-  navigator = new Navigator(&cmdvelPub, &facePub, &posterExplorationService);
+  navigator = new Navigator(&cmdvelPub, &posterExplorationService, &faceDialogueService);
 
   // Initialize subscribers
   ros::Subscriber ringSub =
