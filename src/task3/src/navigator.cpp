@@ -36,6 +36,11 @@ struct NavigatorPoint {
     bool   spin;
 };
 
+struct PosterData {
+    int         prize;
+    std::string ringColor;
+};
+
 /* ------------------------------------------------------------------------- */
 /*   Navigator class                                                         */
 /* ------------------------------------------------------------------------- */
@@ -188,7 +193,7 @@ class Navigator {
     void approachCylinder(task3::RingPoseMsgConstPtr cylinder) {
       // Approach the cylinder
       currentSearchingState = FSMSearchingState::DRIVING;
-      ROS_INFO("Approaching cylinder: %s", cylinder->color_name);
+      ROS_INFO("Approaching cylinder: %s", cylinder->color_name.c_str());
       approachPoint(cylinder->pose);
 
       // Transition to AT_CYLINDER state
@@ -345,20 +350,24 @@ class Navigator {
         ros::Duration(5.0).sleep();
 
         // Finished approaching, transition state
-        //currentExploringState = FSMExploringState::AT_POSTER;
-        //posterPublisher->publish(approachMsg);
+        currentExploringState = FSMExploringState::AT_POSTER;
 
         task3::PosterExplorationSrv srv;
         if (posterExplorationService->call(srv)) {
+          // OCR performed in this step
+          currentExploringState = FSMExploringState::POSTER_OCR;
           ROS_INFO("Poster exploration service called successfully");
           ROS_INFO("%d prize, %s ring_color", srv.response.prize, srv.response.ring_color.c_str());
+
+          // Save poster data in this step
+          currentExploringState = FSMExploringState::SAVE_POSTER;
+          PosterData poster     = { srv.response.prize, srv.response.ring_color };
+          savedPosters.push_back(poster);
         } else {
           ROS_ERROR("Failed to call poster exploration service");
         }
 
-        // TODO Handle OCR flow, save if informative, then proceed with exploration
-        currentExploringState = FSMExploringState::POSTER_OCR;
-        currentExploringState = FSMExploringState::SAVE_POSTER;
+        // Go back to exploring
         currentExploringState = FSMExploringState::EXPLORING;
       } else {
         warnInvalidState("Cannot process poster detections outside Exploring.Exploring!");
@@ -392,6 +401,7 @@ class Navigator {
     // Vectors for saving data
     vector<task3::RingPoseMsgConstPtr> savedRings;
     vector<task3::RingPoseMsgConstPtr> savedCylinders;
+    vector<PosterData>                 savedPosters;
 
     // Saved cylinder colors from dialogue (fixed to 2 according to task 3 spec)
     vector<std::string> dialogueCylinderColors;
