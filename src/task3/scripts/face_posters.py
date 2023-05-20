@@ -16,7 +16,7 @@ from sensor_msgs.msg import Image
 from geometry_msgs.msg import PointStamped, Vector3, Pose
 from cv_bridge import CvBridge, CvBridgeError
 from visualization_msgs.msg import Marker, MarkerArray
-from std_msgs.msg import ColorRGBA
+from std_msgs.msg import ColorRGBA, Bool
 import numpy as np
 from PIL import Image as PILImage
 
@@ -25,10 +25,11 @@ from actionlib_msgs.msg import GoalID
 import torch
 from facenet_pytorch import MTCNN, InceptionResnetV1
 from torchvision.transforms import ToTensor
-from task3.msg import FacePositionMsg, PosterContentMsg
+from task3.msg import FacePositionMsg
 from tf.transformations import euler_from_quaternion, quaternion_from_euler
 import tf.transformations as tf_transformations
 import geometry_msgs.msg
+from task3.srv import PosterExplorationSrv, PosterExplorationSrvResponse
 
 import easyocr
 
@@ -189,12 +190,6 @@ class face_localizer:
             queue_size=10,
         )
 
-        self.custom_msgs_poster_analyzed = rospy.Publisher(
-            "/custom_msgs/poster_exploration_done",
-            PosterContentMsg,
-            queue_size=10,
-        )
-
         self.face_marker_pub = rospy.Publisher("/faces", MarkerArray, queue_size=10)
 
         self.poster_marker_pub = rospy.Publisher("/posters", MarkerArray, queue_size=10)
@@ -211,23 +206,27 @@ class face_localizer:
 
         self.custom_msgs_face_approached = rospy.Subscriber(
             "/custom_msgs/face_approached",
-            FacePositionMsg,
+            Bool,
             self.face_approached_callback,
             queue_size=10,
         )
 
-        self.custom_msgs_poster_approached = rospy.Subscriber(
-            "/custom_msgs/poster_approached",
-            FacePositionMsg,
-            self.poster_approached_callback,
-            queue_size=10,
+        ###          ###
+        ### SERVICES ###
+        ###          ###
+
+        self.poster_exploration_service = rospy.Service(
+            "/poster_exploration",
+            PosterExplorationSrv,
+            self.poster_exploration_callback,
         )
 
     def face_approached_callback(self, msg):
         pass
 
-    def poster_approached_callback(self, msg):
-        self.analyze_poster()
+    def poster_exploration_callback(self, req):
+        prize, ring_color = self.analyze_poster()
+        return PosterExplorationSrvResponse(ring_color=ring_color, prize=prize)
 
     def analyze_poster(self):
         prizes = []
@@ -314,24 +313,22 @@ class face_localizer:
             print("[-] Poster analysis failed")
             return 11
 
-        msg = PosterContentMsg()
-        msg.prize = most_common_prize
-        msg.ring_color = ring
-        descriptors = self.detect_faces()
-        for (
-            face_descriptor,
-            fdf,
-            rgb_image,
-            face_distance,
-            box,
-            depth_time,
-        ) in descriptors:
-            fdf.poster_content = msg
-            if self.poster_descriptors.add_descriptor(fdf):
-                print("[+] Poster recognition is done.")
-                self.custom_msgs_poster_analyzed.publish(msg)
-            else:
-                print("[-] Poster already detected.")
+        # descriptors = self.detect_faces()
+        return most_common_prize, ring
+        # for (
+        #    face_descriptor,
+        #    fdf,
+        #    rgb_image,
+        #    face_distance,
+        #    box,
+        #    depth_time,
+        # ) in descriptors:
+        #    fdf.poster_content = msg
+        #    if self.poster_descriptors.add_descriptor(fdf):
+        #        print("[+] Poster recognition is done.")
+        #        self.custom_msgs_poster_analyzed.publish(msg)
+        #    else:
+        #        print("[-] Poster already detected.")
 
     def get_pose(self, coords, dist, stamp, return_angle=False):
         k_f = 554

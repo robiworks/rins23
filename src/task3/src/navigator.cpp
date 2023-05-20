@@ -17,6 +17,7 @@
 #include <string>
 #include <task3/FacePositionMsg.h>
 #include <task3/PosterContentMsg.h>
+#include <task3/PosterExplorationSrv.h>
 #include <task3/RingPoseMsg.h>
 
 using namespace std;
@@ -70,11 +71,15 @@ class Navigator {
       currentExploringState = FSMExploringState::EXPLORING;
     }
 
-    Navigator(ros::Publisher* cmdvelPub, ros::Publisher* facePub, ros::Publisher* posterPub)
+    Navigator(
+        ros::Publisher*     cmdvelPub,
+        ros::Publisher*     facePub,
+        ros::ServiceClient* posterExplorationPub
+    )
         : Navigator() {
-      cmdvelPublisher = cmdvelPub;
-      facePublisher   = facePub;
-      posterPublisher = posterPub;
+      cmdvelPublisher          = cmdvelPub;
+      facePublisher            = facePub;
+      posterExplorationService = posterExplorationPub;
     }
 
     /* --------------------------------------------------------------------- */
@@ -340,8 +345,16 @@ class Navigator {
         ros::Duration(5.0).sleep();
 
         // Finished approaching, transition state
-        currentExploringState = FSMExploringState::AT_POSTER;
-        posterPublisher->publish(approachMsg);
+        //currentExploringState = FSMExploringState::AT_POSTER;
+        //posterPublisher->publish(approachMsg);
+
+        task3::PosterExplorationSrv srv;
+        if (posterExplorationService->call(srv)) {
+          ROS_INFO("Poster exploration service called successfully");
+          ROS_INFO("%d prize, %s ring_color", srv.response.prize, srv.response.ring_color.c_str());
+        } else {
+          ROS_ERROR("Failed to call poster exploration service");
+        }
 
         // TODO Handle OCR flow, save if informative, then proceed with exploration
         currentExploringState = FSMExploringState::POSTER_OCR;
@@ -362,6 +375,9 @@ class Navigator {
     ros::Publisher* cmdvelPublisher;
     ros::Publisher* facePublisher;
     ros::Publisher* posterPublisher;
+
+    // Services
+    ros::ServiceClient* posterExplorationService;
 
     // Status booleans
     bool isKilled    = false;
@@ -617,26 +633,29 @@ int main(int argc, char* argv[]) {
   }
 
   // Vector of interest points in the map
- vector<NavigatorPoint> interestPoints {
-  {-0.12743505835533142, -0.8521984815597534, true},
-  {1.8312116861343384, -0.8496211171150208, true},
-  {3.167850971221924, -0.17633983492851257, true},
-  {0.9728254079818726, 0.47237855195999146, true},
-  {2.2167627811431885, 1.5656521320343018, true},
-  {0.8262811303138733, 2.1619505882263184, true},
-  {0.7874721884727478, 2.7356855869293213, true},
-  {-0.6058950424194336, 2.61098313331604, true},
-  {-1.0938093662261963, 1.595930576324463, true},
-  {-1.159267783164978, 0.4037659764289856, true},
-};
+  vector<NavigatorPoint> interestPoints {
+    {-0.12743505835533142,  -0.8521984815597534, true},
+    {  1.8312116861343384,  -0.8496211171150208, true},
+    {   3.167850971221924, -0.17633983492851257, true},
+    {  0.9728254079818726,  0.47237855195999146, true},
+    {  2.2167627811431885,   1.5656521320343018, true},
+    {  0.8262811303138733,   2.1619505882263184, true},
+    {  0.7874721884727478,   2.7356855869293213, true},
+    { -0.6058950424194336,     2.61098313331604, true},
+    { -1.0938093662261963,    1.595930576324463, true},
+    {  -1.159267783164978,   0.4037659764289856, true},
+  };
 
   // Initialize publisher for robot rotation
   ros::Publisher cmdvelPub = nh.advertise<geometry_msgs::Twist>("/cmd_vel_mux/input/navi", 10);
   ros::Publisher facePub   = nh.advertise<std_msgs::Bool>("/custom_msgs/face_approached", 10);
-  ros::Publisher posterPub = nh.advertise<std_msgs::Bool>("/custom_msgs/poster_approached", 10);
+
+  // Initialize services
+  ros::ServiceClient posterExplorationService =
+      nh.serviceClient<task3::PosterExplorationSrv>("/poster_exploration");
 
   // Initialize Navigator
-  navigator = new Navigator(&cmdvelPub, &facePub, &posterPub);
+  navigator = new Navigator(&cmdvelPub, &facePub, &posterExplorationService);
 
   // Initialize subscribers
   ros::Subscriber ringSub =
