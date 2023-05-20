@@ -29,7 +29,12 @@ from task3.msg import FacePositionMsg
 from tf.transformations import euler_from_quaternion, quaternion_from_euler
 import tf.transformations as tf_transformations
 import geometry_msgs.msg
-from task3.srv import PosterExplorationSrv, PosterExplorationSrvResponse
+from task3.srv import (
+    PosterExplorationSrv,
+    PosterExplorationSrvResponse,
+    FaceDialogueSrv,
+    FaceDialogueSrvResponse,
+)
 
 import easyocr
 
@@ -204,12 +209,12 @@ class face_localizer:
         ### SUBSCRIBERS ###
         ###             ###
 
-        self.custom_msgs_face_approached = rospy.Subscriber(
-            "/custom_msgs/face_approached",
-            Bool,
-            self.face_approached_callback,
-            queue_size=10,
-        )
+        # self.custom_msgs_face_approached = rospy.Subscriber(
+        #    "/custom_msgs/face_approached",
+        #    Bool,
+        #    self.face_approached_callback,
+        #    queue_size=10,
+        # )
 
         ###          ###
         ### SERVICES ###
@@ -221,8 +226,12 @@ class face_localizer:
             self.poster_exploration_callback,
         )
 
-    def face_approached_callback(self, msg):
-        pass
+        self.face_dialogue_service = rospy.Service(
+            "/face_dialogue", FaceDialogueSrv, self.face_dialogue_callback
+        )
+
+    def face_dialogue_callback(self, msg):
+        return FaceDialogueSrvResponse(useful=False, color1="blue", color2="green")
 
     def poster_exploration_callback(self, req):
         prize, ring_color = self.analyze_poster()

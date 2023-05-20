@@ -330,7 +330,7 @@ class Navigator {
             dialogueCylinderColors.push_back(srv.response.color2);
           }
         } else {
-          ROS_ERROR("Failed to call poster exploration service");
+          ROS_ERROR("Failed to call dialogue service");
         }
 
         // Go back to exploring
