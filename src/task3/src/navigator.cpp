@@ -192,7 +192,14 @@ class Navigator {
 
       // Try cylinder 1 first
       approachCylinder(cyl1);
-      // TODO If we found the robber, pick up the robber and go to parking state
+
+      if (currentSearchingState == FSMSearchingState::ROBBER_FOUND) {
+        // Robber found on 1st cylinder
+        takeRobberToPrison(cyl1);
+      } else if (currentSearchingState == FSMSearchingState::ROBBER_NOT_FOUND) {
+        // Robber is on 2nd cylinder
+        approachCylinder(cyl2);
+      }
     }
 
     // Approach a cylinder, look on top of it and continue depending on result
@@ -204,8 +211,35 @@ class Navigator {
 
       // Transition to AT_CYLINDER state
       currentSearchingState = FSMSearchingState::AT_CYLINDER;
-      // TODO Extend arm and look on top of cylinder
-      currentSearchingState = FSMSearchingState::LOOKING;
+
+      // Extend arm
+      task3::ArmExtendSrv srv;
+      srv.request.extend = true;
+
+      if (armExtendService->call(srv)) {
+        // TODO Look on top of cylinder
+        currentSearchingState = FSMSearchingState::LOOKING;
+
+        // TODO Check whether robber found or not, update state accordingly
+
+        // Move arm back to default position
+        task3::ArmExtendSrv retract;
+        retract.request.extend = false;
+        armExtendService->call(retract);
+      } else {
+        ROS_ERROR("Failed to call arm extend service");
+      }
+    }
+
+    // Take the robber to assigned prison
+    void takeRobberToPrison(task3::RingPoseMsgConstPtr cylinder) {
+      // Tell the robot to enter the car
+      soundClient->say("Hey mister robber, take a spin in our robot car!");
+      ros::Duration(5.0).sleep();
+
+      // TODO Do parking main phase
+      currentMainState    = FSMMainState::PARKING;
+      currentParkingState = FSMParkingState::DRIVING;
     }
 
     // Clean up (used on SIGINT)
