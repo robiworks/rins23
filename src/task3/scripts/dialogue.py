@@ -68,11 +68,11 @@ class Dialogue:
         self.sound_client.say("Hey, do you know where the robber is hiding?")
         rospy.sleep(2)
         response = self.recognize_speech_from_mic()
-        if response["success"] != True:
+        if response["success"] != True or response["transcription"] == None:
             self.sound_client.say("I didn't catch that. Could you please repeat?")
             rospy.sleep(2)
             response = self.recognize_speech_from_mic()
-            if response["success"] != True:
+            if response["success"] != True or response["transcription"] == None:
                 self.sound_client.say("Falling back to keyboard input.")
                 response["transcription"] = self.enter_text()
 
@@ -109,6 +109,7 @@ class Dialogue:
 
 
 def main():
+    rospy.sleep(5)
     dialogue = Dialogue()
     rospy.loginfo("Dialogue node started.")
 
