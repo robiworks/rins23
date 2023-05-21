@@ -17,6 +17,7 @@
 #include <string>
 #include <task3/ArmExtendSrv.h>
 #include <task3/ArmParkingSrv.h>
+#include <task3/CylinderFaceSrv.h>
 #include <task3/FaceDialogueSrv.h>
 #include <task3/FacePositionMsg.h>
 #include <task3/PosterExplorationSrv.h>
@@ -83,7 +84,8 @@ class Navigator {
         ros::ServiceClient* posterExplorationSrv,
         ros::ServiceClient* faceDialogueSrv,
         ros::ServiceClient* armExtendSrv,
-        ros::ServiceClient* armParkingSrv
+        ros::ServiceClient* armParkingSrv,
+        ros::ServiceClient* cylinderFaceSrv
     )
         : Navigator() {
       cmdvelPublisher          = cmdvelPub;
@@ -91,6 +93,7 @@ class Navigator {
       faceDialogueService      = faceDialogueSrv;
       armExtendService         = armExtendSrv;
       armParkingService        = armParkingSrv;
+      cylinderFaceService      = cylinderFaceSrv;
     }
 
     /* --------------------------------------------------------------------- */
@@ -191,36 +194,50 @@ class Navigator {
       }
 
       // Try cylinder 1 first
-      approachCylinder(cyl1);
-
-      if (currentSearchingState == FSMSearchingState::ROBBER_FOUND) {
+      std::string result = approachCylinder(cyl1);
+      if (result != "null") {
         // Robber found on 1st cylinder
-        takeRobberToPrison(cyl1);
-      } else if (currentSearchingState == FSMSearchingState::ROBBER_NOT_FOUND) {
+        takeRobberToPrison(result);
+      } else {
         // Robber is on 2nd cylinder
-        approachCylinder(cyl2);
+        result = approachCylinder(cyl2);
+        takeRobberToPrison(result);
       }
     }
 
     // Approach a cylinder, look on top of it and continue depending on result
-    void approachCylinder(task3::RingPoseMsgConstPtr cylinder) {
+    std::string approachCylinder(task3::RingPoseMsgConstPtr cylinder) {
       // Approach the cylinder
       currentSearchingState = FSMSearchingState::DRIVING;
       ROS_INFO("Approaching cylinder: %s", cylinder->color_name.c_str());
       approachPoint(cylinder->pose);
 
       // Transition to AT_CYLINDER state
-      currentSearchingState = FSMSearchingState::AT_CYLINDER;
+      currentSearchingState   = FSMSearchingState::AT_CYLINDER;
+      std::string prisonColor = "null";
 
       // Extend arm
-      task3::ArmExtendSrv srv;
-      srv.request.extend = true;
+      task3::ArmExtendSrv extend;
+      extend.request.extend = true;
 
-      if (armExtendService->call(srv)) {
-        // TODO Look on top of cylinder
+      if (armExtendService->call(extend)) {
+        task3::CylinderFaceSrv look;
+        look.request.cylinder_color = cylinder->color_name;
+
+        // Look on top of cylinder
         currentSearchingState = FSMSearchingState::LOOKING;
-
-        // TODO Check whether robber found or not, update state accordingly
+        if (cylinderFaceService->call(look)) {
+          if (look.response.correct_robber) {
+            // Found the robber
+            ROS_INFO("Robber found, ring color: %s", look.response.ring_color.c_str());
+            currentSearchingState = FSMSearchingState::ROBBER_FOUND;
+            prisonColor           = look.response.ring_color;
+          } else {
+            // Didn't find the robber here
+            ROS_INFO("Robber not found");
+            currentSearchingState = FSMSearchingState::ROBBER_NOT_FOUND;
+          }
+        }
 
         // Move arm back to default position
         task3::ArmExtendSrv retract;
@@ -229,17 +246,33 @@ class Navigator {
       } else {
         ROS_ERROR("Failed to call arm extend service");
       }
+
+      return prisonColor;
     }
 
     // Take the robber to assigned prison
-    void takeRobberToPrison(task3::RingPoseMsgConstPtr cylinder) {
+    void takeRobberToPrison(std::string prisonColor) {
       // Tell the robot to enter the car
       soundClient->say("Hey mister robber, take a spin in our robot car!");
       ros::Duration(5.0).sleep();
 
-      // TODO Do parking main phase
+      // Transition to parking main state
       currentMainState    = FSMMainState::PARKING;
       currentParkingState = FSMParkingState::DRIVING;
+
+      for (int i = 0; i < savedRings.size(); i++) {
+        task3::RingPoseMsgConstPtr item = savedRings.at(i);
+
+        if (item->color_name == prisonColor) {
+          // Drive to approach point of ring
+          approachPoint(item->pose);
+          break;
+        }
+      }
+
+      // Should be at the ring approach point here
+      currentParkingState = FSMParkingState::FINDING_SPOT;
+      // TODO Extend arm, find parking point, park into circle
     }
 
     // Clean up (used on SIGINT)
@@ -449,6 +482,7 @@ class Navigator {
     ros::ServiceClient* faceDialogueService;
     ros::ServiceClient* armExtendService;
     ros::ServiceClient* armParkingService;
+    ros::ServiceClient* cylinderFaceService;
 
     // Status booleans
     bool isKilled    = false;
@@ -532,6 +566,8 @@ class Navigator {
             ROS_INFO("Finished approaching face or poster!");
           } else if (currentMainState == FSMMainState::SEARCHING && currentSearchingState == FSMSearchingState::DRIVING) {
             ROS_INFO("Finished approaching cylinder!");
+          } else if (currentMainState == FSMMainState::PARKING && currentParkingState == FSMParkingState::DRIVING) {
+            ROS_INFO("Finished approaching parking ring!");
           } else {
             ROS_INFO("Successfully navigated to interest point!");
           }
@@ -733,6 +769,8 @@ int main(int argc, char* argv[]) {
       nh.serviceClient<task3::ArmExtendSrv>("/arm_control/extend");
   ros::ServiceClient armParkingService =
       nh.serviceClient<task3::ArmParkingSrv>("/arm_control/parking_search");
+  ros::ServiceClient cylinderFaceService =
+      nh.serviceClient<task3::CylinderFaceSrv>("/cylinder_face");
 
   // Initialize Navigator
   navigator = new Navigator(
@@ -740,7 +778,8 @@ int main(int argc, char* argv[]) {
       &posterExplorationService,
       &faceDialogueService,
       &armExtendService,
-      &armParkingService
+      &armParkingService,
+      &cylinderFaceService
   );
 
   // Initialize subscribers
