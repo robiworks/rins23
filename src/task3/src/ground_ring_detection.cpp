@@ -264,12 +264,8 @@ void getDepths(
 
         pose.pose = pose_msg;
 
-        ground_ring_pub.publish(pose);
+        ground_ring_pub.publish(pose.pose);
         final_pose = pose.pose;
-
-        // Print the pose
-        ROS_INFO("Pose: %f, %f, %f", mean_x, mean_y, mean_z);
-
 
         search = false;
       }
@@ -403,17 +399,12 @@ void image_callback(
 // Fuunction that returns a pose named scanCallback
 void scanCallback(const std_msgs::Bool::ConstPtr& doSearch) {
   ROS_WARN("Scan callback");
-  printf("Search b: %d\n", search);
   search = doSearch->data;
-  printf("Search: a %d\n", search);
   if(search){
     moveArmScanRing();
   }else{
     moveArmDefault();
   }
-
-
-  // Publish pose
 }
 
 
@@ -479,7 +470,7 @@ int main(int argc, char** argv) {
   // ros::Subscriber green_sub =
   //     nh.subscribe("/custom_msgs/nav/green_ring_detected", 1, &green_callback);
 
-  ground_ring_pub = nh.advertise<task3::RingPoseMsg>("/custom_msgs/ground_ring_detection", 1000);
+  ground_ring_pub = nh.advertise<geometry_msgs::Pose>("/arm_control/parking_point", 1000);
 
   Subscriber<Image> rgb_sub(nh, rgb_topic, 1);
   Subscriber<Image> depth_sub(nh, depth_topic, 1);
