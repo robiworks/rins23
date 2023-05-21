@@ -262,9 +262,12 @@ int main(int argc, char** argv) {
 
   bool debug_param = false;
 
-  nh.getParam("depth", depth_topic);
-  nh.getParam("rgb", rgb_topic);
+  // nh.getParam("depth", depth_topic);
+  // nh.getParam("rgb", rgb_topic);
   nh.getParam("debug", debug_param);
+
+  depth_topic = "/camera/depth/image_raw";
+  rgb_topic   = "/camera/rgb/image_raw";
 
   debug = debug_param;
 

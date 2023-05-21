@@ -12,6 +12,8 @@
 #include <trajectory_msgs/JointTrajectoryPoint.h>
 #include <visualization_msgs/Marker.h>
 #include <visualization_msgs/MarkerArray.h>
+#include <task3/ArmExtendSrv.h>
+#include <std_msgs/Bool.h>
 
 using namespace message_filters;
 using namespace sensor_msgs;
@@ -28,9 +30,64 @@ int                             detection_count = 0;
 bool debug;
 bool search = false;
 
+bool arm_extended = false;
+
+geometry_msgs::Pose final_pose;
+
 ros::Publisher marker_pub;
 ros::Publisher ground_ring_pub;
 ros::Publisher arm_pub;
+
+
+void moveArmDefault() {
+  // Move the arm to the position
+  trajectory_msgs::JointTrajectory      trajectory;
+  trajectory_msgs::JointTrajectoryPoint point;
+
+  trajectory.joint_names.push_back("arm_shoulder_pan_joint");
+  trajectory.joint_names.push_back("arm_shoulder_lift_joint");
+  trajectory.joint_names.push_back("arm_elbow_flex_joint");
+  trajectory.joint_names.push_back("arm_wrist_flex_joint");
+
+  point.positions.push_back(0);
+  point.positions.push_back(0);
+  point.positions.push_back(0);
+  point.positions.push_back(0);
+
+  point.time_from_start = ros::Duration(1.0);
+
+  trajectory.points.push_back(point);
+
+  arm_pub.publish(trajectory);
+
+  //wait 2 sec
+  ros::Duration(2.0).sleep();
+}
+
+void moveArmScanRing() {
+  // Move the arm to the position
+  trajectory_msgs::JointTrajectory      trajectory;
+  trajectory_msgs::JointTrajectoryPoint point;
+
+  trajectory.joint_names.push_back("arm_shoulder_pan_joint");
+  trajectory.joint_names.push_back("arm_shoulder_lift_joint");
+  trajectory.joint_names.push_back("arm_elbow_flex_joint");
+  trajectory.joint_names.push_back("arm_wrist_flex_joint");
+
+  point.positions.push_back(0);
+  point.positions.push_back(0.3);
+  point.positions.push_back(0.9);
+  point.positions.push_back(0);
+
+  point.time_from_start = ros::Duration(1.0);
+
+  trajectory.points.push_back(point);
+
+  arm_pub.publish(trajectory);
+
+  //wait 2 sec
+  ros::Duration(2.0).sleep();
+}
 
 void getDepths(
     std::vector<cv::Vec4f>            circles,
@@ -203,7 +260,9 @@ void getDepths(
 
         pose.pose = pose_msg;
 
-        ground_ring_pub.publish(pose);
+        ground_ring_pub.publish(pose.pose);
+        final_pose = pose.pose;
+
         search = false;
       }
 
@@ -252,9 +311,9 @@ std::vector<cv::Vec4f> detectCircles(cv::Mat input_img, cv::Mat output_img) {
     // TODO publish the location of the radius
 
     // Draw the circle outline
-    if (debug) {
-      // ROS_WARN("Circle radius: %d", radius);
+    // ROS_WARN("Circle radius: %d", radius);
 
+    if (debug) {
       // Draw the center of the circle
       cv::circle(output_img, center, 3, cv::Scalar(0, 255, 0), -1);
 
@@ -298,38 +357,35 @@ void image_callback(
   getDepths(circles, cv_ptr, cv_rgb, rgb_img, depth_image->header);
 }
 
-void green_callback(task3::RingPoseMsg pose) {
-  ROS_WARN("Green callback");
-
-  // Move the arm to the position
-  trajectory_msgs::JointTrajectory      trajectory;
-  trajectory_msgs::JointTrajectoryPoint point;
-
-  trajectory.joint_names.push_back("arm_shoulder_pan_joint");
-  trajectory.joint_names.push_back("arm_shoulder_lift_joint");
-  trajectory.joint_names.push_back("arm_elbow_flex_joint");
-  trajectory.joint_names.push_back("arm_wrist_flex_joint");
-
-  point.positions.push_back(0);
-  point.positions.push_back(0.3);
-  point.positions.push_back(0.9);
-  point.positions.push_back(0);
-
-  point.time_from_start = ros::Duration(1.0);
-
-  trajectory.points.push_back(point);
-
-  arm_pub.publish(trajectory);
-
-  //wait 2 sec
-  ros::Duration(5.0).sleep();
-  search = true;
+// Fuunction that returns a pose named scanCallback
+void scanCallback(const std_msgs::Bool::ConstPtr& doSearch) {
+  ROS_WARN("Scan callback");
+  search = doSearch->data;
+  if(search){
+    moveArmScanRing();
+  }else{
+    moveArmDefault();
+  }
 }
 
-void stop_green_callback(task3::RingPoseMsg pose) {
-  ROS_WARN("Stop green callback");
-  search = false;
+
+bool extendArmCallback(task3::ArmExtendSrv::Request &req, task3::ArmExtendSrv::Response &res) {
+  ROS_WARN("Extend arm callback");
+  bool extend = req.extend;
+  if (extend) 
+  {
+    moveArmScanRing();
+    arm_extended = true;
+  }else{
+    moveArmDefault();
+    arm_extended = false;
+  }
+  
+  res.extended = arm_extended;
+
+  return true;
 }
+
 
 int main(int argc, char** argv) {
   ros::init(argc, argv, "ground_ring_detection");
@@ -339,8 +395,11 @@ int main(int argc, char** argv) {
 
   bool debug_param = false;
 
-  nh.getParam("depth", depth_topic);
-  nh.getParam("rgb", rgb_topic);
+  // nh.getParam("depth", depth_topic);
+  // nh.getParam("rgb", rgb_topic);
+  depth_topic = "/arm_camera/depth/image_raw";
+  rgb_topic = "/arm_camera/rgb/image_raw";
+
   nh.getParam("cam_info", cam_info);
   nh.getParam("debug", debug_param);
 
@@ -357,12 +416,16 @@ int main(int argc, char** argv) {
   ROS_INFO("RGB topic: %s", rgb_topic.c_str());
   ROS_INFO("Debug: %s", debug ? "true" : "false");
 
+  // Service for extending the arm
+  ros::ServiceServer arm_service = nh.advertiseService("/arm_control/extend", extendArmCallback);
+
+  // subscribwer for scanning the ground
+  ros::Subscriber scan_sub = nh.subscribe("/arm_control/scan", 1, &scanCallback);
+
+
   marker_pub = nh.advertise<visualization_msgs::MarkerArray>("ground_ring_marker", 10000);
 
-  ros::Subscriber green_sub =
-      nh.subscribe("/custom_msgs/nav/green_ring_detected", 1, &green_callback);
-
-  ground_ring_pub = nh.advertise<task3::RingPoseMsg>("/custom_msgs/ground_ring_detection", 1000);
+  ground_ring_pub = nh.advertise<geometry_msgs::Pose>("/arm_control/parking_point", 1000);
 
   Subscriber<Image> rgb_sub(nh, rgb_topic, 1);
   Subscriber<Image> depth_sub(nh, depth_topic, 1);
