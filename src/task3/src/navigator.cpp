@@ -16,7 +16,6 @@
 #include <stdlib.h>
 #include <string>
 #include <task3/ArmExtendSrv.h>
-#include <task3/ArmParkingSrv.h>
 #include <task3/CylinderFaceSrv.h>
 #include <task3/FaceDialogueSrv.h>
 #include <task3/FacePositionMsg.h>
@@ -84,16 +83,16 @@ class Navigator {
         ros::ServiceClient* posterExplorationSrv,
         ros::ServiceClient* faceDialogueSrv,
         ros::ServiceClient* armExtendSrv,
-        ros::ServiceClient* armParkingSrv,
-        ros::ServiceClient* cylinderFaceSrv
+        ros::ServiceClient* cylinderFaceSrv,
+        ros::Publisher*     parkingPub
     )
         : Navigator() {
       cmdvelPublisher          = cmdvelPub;
       posterExplorationService = posterExplorationSrv;
       faceDialogueService      = faceDialogueSrv;
       armExtendService         = armExtendSrv;
-      armParkingService        = armParkingSrv;
       cylinderFaceService      = cylinderFaceSrv;
+      parkingPublisher         = parkingPub;
     }
 
     /* --------------------------------------------------------------------- */
@@ -277,28 +276,14 @@ class Navigator {
       task3::ArmExtendSrv extend;
       extend.request.extend = true;
       if (armExtendService->call(extend)) {
-        // Search for parking spot center
-        task3::ArmParkingSrv parking;
-        parking.request.search = true;
+        // Publish "request" to find parking spot
+        std_msgs::Bool parking;
+        parking.data = true;
+        parkingPublisher->publish(parking);
 
-        if (armParkingService->call(parking)) {
-          ROS_INFO(
-              "Parking point: (x: %f, y: %f)",
-              parking.response.pose.position.x,
-              parking.response.pose.position.y
-          );
-
-          // TODO Park into spot
-          currentParkingState = FSMParkingState::MANEUVERING;
-          approachPoint(parking.response.pose);
-
-          soundClient->say("I'm done!");
-          ros::Duration(3.0).sleep();
-
-          // TODO Wave with the manipulator
-        } else {
-          ROS_ERROR("Failed to call arm parking service");
-        }
+        // Wait for parking position callback to fire
+        // Parking execution is moved into that callback
+        spin(180.0, 0.5);
       } else {
         ROS_ERROR("Failed to call arm extend service");
       }
@@ -507,6 +492,36 @@ class Navigator {
       }
     }
 
+    // PARKING POINT DETECTION
+    // Callback to handle /arm_control/parking_point
+    void parkingPointCallback(geometry_msgs::Pose pose) {
+      if (currentMainState == FSMMainState::PARKING &&
+          currentParkingState == FSMParkingState::FINDING_SPOT) {
+        ROS_INFO("Received parking point: (x: %f, y: %f)", pose.position.x, pose.position.y);
+
+        // Park into spot
+        currentParkingState = FSMParkingState::MANEUVERING;
+        approachPoint(pose);
+
+        // Parking should be finished at this point
+        currentParkingState = FSMParkingState::FINISHED;
+        soundClient->say("I'm done!");
+        ros::Duration(3.0).sleep();
+
+        // Wave with the manipulator
+        task3::ArmExtendSrv srv;
+        srv.request.extend = false;
+        armExtendService->call(srv);
+        srv.request.extend = true;
+        armExtendService->call(srv);
+
+        // Move to END state
+        currentMainState = FSMMainState::END;
+      } else {
+        warnInvalidState("Cannot process parking point detection outside Parking.FindingSpot!");
+      }
+    }
+
   private:
     // Navigation client
     MoveBaseClient*          client;
@@ -515,12 +530,12 @@ class Navigator {
 
     // Publishers
     ros::Publisher* cmdvelPublisher;
+    ros::Publisher* parkingPublisher;
 
     // Services
     ros::ServiceClient* posterExplorationService;
     ros::ServiceClient* faceDialogueService;
     ros::ServiceClient* armExtendService;
-    ros::ServiceClient* armParkingService;
     ros::ServiceClient* cylinderFaceService;
 
     // Status booleans
@@ -628,16 +643,16 @@ class Navigator {
     static constexpr float SPIN_ANGULAR_VEL = 0.75;
     static constexpr float DEGREE_RATIO     = 29.75 / 360;
 
-    void spin(float degrees) {
+    void spin(float degrees, float angularVel = SPIN_ANGULAR_VEL) {
       ros::Rate            rate(SPIN_RATE);
       geometry_msgs::Twist msg;
 
       // Set parameters for rotation
       msg.linear.x  = 0.0;
-      msg.angular.z = SPIN_ANGULAR_VEL;
+      msg.angular.z = angularVel;
 
       // Calculate number of iterations required to spin given degrees
-      int iterations = round((degrees * DEGREE_RATIO) / SPIN_ANGULAR_VEL);
+      int iterations = round((degrees * DEGREE_RATIO) / angularVel);
       for (int i = 0; i < iterations; i++) {
         cmdvelPublisher->publish(msg);
         rate.sleep();
@@ -799,7 +814,8 @@ int main(int argc, char* argv[]) {
   };
 
   // Initialize publisher for robot rotation
-  ros::Publisher cmdvelPub = nh.advertise<geometry_msgs::Twist>("/cmd_vel_mux/input/navi", 10);
+  ros::Publisher cmdvelPub  = nh.advertise<geometry_msgs::Twist>("/cmd_vel_mux/input/navi", 10);
+  ros::Publisher parkingPub = nh.advertise<std_msgs::Bool>("/arm_control/scan", 10);
 
   // Initialize services
   ros::ServiceClient posterExplorationService =
@@ -808,8 +824,6 @@ int main(int argc, char* argv[]) {
       nh.serviceClient<task3::FaceDialogueSrv>("/face_dialogue");
   ros::ServiceClient armExtendService =
       nh.serviceClient<task3::ArmExtendSrv>("/arm_control/extend");
-  ros::ServiceClient armParkingService =
-      nh.serviceClient<task3::ArmParkingSrv>("/arm_control/parking_search");
   ros::ServiceClient cylinderFaceService =
       nh.serviceClient<task3::CylinderFaceSrv>("/cylinder_face");
 
@@ -819,8 +833,8 @@ int main(int argc, char* argv[]) {
       &posterExplorationService,
       &faceDialogueService,
       &armExtendService,
-      &armParkingService,
-      &cylinderFaceService
+      &cylinderFaceService,
+      &parkingPub
   );
 
   // Initialize subscribers
@@ -840,6 +854,8 @@ int main(int argc, char* argv[]) {
       &Navigator::posterDetectedCallback,
       navigator
   );
+  ros::Subscriber parkingSub =
+      nh.subscribe("/arm_control/parking_point", 1, &Navigator::parkingPointCallback, navigator);
 
   // Navigate through interest points
   navigator->navigateList(interestPoints);
