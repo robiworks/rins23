@@ -7,13 +7,16 @@
 #include <opencv2/opencv.hpp>
 #include <ros/ros.h>
 #include <sensor_msgs/Image.h>
+#include <std_msgs/Bool.h>
+#include <task3/ArmExtendSrv.h>
 #include <task3/RingPoseMsg.h>
+#include <tf2/transform_datatypes.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+#include <tf2_ros/transform_listener.h>
 #include <trajectory_msgs/JointTrajectory.h>
 #include <trajectory_msgs/JointTrajectoryPoint.h>
 #include <visualization_msgs/Marker.h>
 #include <visualization_msgs/MarkerArray.h>
-#include <task3/ArmExtendSrv.h>
-#include <std_msgs/Bool.h>
 
 using namespace message_filters;
 using namespace sensor_msgs;
@@ -25,7 +28,7 @@ visualization_msgs::MarkerArray marker_array;
 
 // Array of detections
 std::vector<geometry_msgs::PointStamped> detections;
-int                             detection_count = 0;
+int                                      detection_count = 0;
 
 bool debug;
 bool search = false;
@@ -38,6 +41,8 @@ ros::Publisher marker_pub;
 ros::Publisher ground_ring_pub;
 ros::Publisher arm_pub;
 
+tf2_ros::Buffer*            tfBuffer   = NULL;
+tf2_ros::TransformListener* tfListener = NULL;
 
 void moveArmDefault() {
   // Move the arm to the position
@@ -228,7 +233,7 @@ void getDepths(
 
         // Make a marker for the point
         visualization_msgs::Marker marker;
-        marker.header.frame_id    = "camera_rgb_optical_frame";
+        marker.header.frame_id    = "arm_camera_rgb_optical_frame";
         marker.header.stamp       = depth_header.stamp;
         marker.ns                 = "points_and_lines";
         marker.id                 = rand();
@@ -254,9 +259,17 @@ void getDepths(
 
         marker_pub.publish(marker_array);
 
-        pose_msg.position.x = mean_x;
-        pose_msg.position.y = mean_y;
-        pose_msg.position.z = mean_z;
+        // Transform point from arm camera frame to map frame
+        point.point.x = mean_x;
+        point.point.y = mean_y;
+        point.point.z = mean_z;
+
+        geometry_msgs::PointStamped ps;
+        ps = tfBuffer->transform(point, "map", ros::Duration(3.0));
+
+        pose_msg.position.x = ps.point.x;
+        pose_msg.position.y = ps.point.y;
+        pose_msg.position.z = ps.point.z;
 
         pose.pose = pose_msg;
 
@@ -358,34 +371,31 @@ void image_callback(
 }
 
 // Fuunction that returns a pose named scanCallback
-void scanCallback(const std_msgs::Bool::ConstPtr& doSearch) {
+void scanCallback(const std_msgs::Bool::ConstPtr &doSearch) {
   ROS_WARN("Scan callback");
   search = doSearch->data;
-  if(search){
+  if (search) {
     moveArmScanRing();
-  }else{
+  } else {
     moveArmDefault();
   }
 }
-
 
 bool extendArmCallback(task3::ArmExtendSrv::Request &req, task3::ArmExtendSrv::Response &res) {
   ROS_WARN("Extend arm callback");
   bool extend = req.extend;
-  if (extend) 
-  {
+  if (extend) {
     moveArmScanRing();
     arm_extended = true;
-  }else{
+  } else {
     moveArmDefault();
     arm_extended = false;
   }
-  
+
   res.extended = arm_extended;
 
   return true;
 }
-
 
 int main(int argc, char** argv) {
   ros::init(argc, argv, "ground_ring_detection");
@@ -398,7 +408,7 @@ int main(int argc, char** argv) {
   // nh.getParam("depth", depth_topic);
   // nh.getParam("rgb", rgb_topic);
   depth_topic = "/arm_camera/depth/image_raw";
-  rgb_topic = "/arm_camera/rgb/image_raw";
+  rgb_topic   = "/arm_camera/rgb/image_raw";
 
   nh.getParam("cam_info", cam_info);
   nh.getParam("debug", debug_param);
@@ -422,7 +432,6 @@ int main(int argc, char** argv) {
   // subscribwer for scanning the ground
   ros::Subscriber scan_sub = nh.subscribe("/arm_control/scan", 1, &scanCallback);
 
-
   marker_pub = nh.advertise<visualization_msgs::MarkerArray>("ground_ring_marker", 10000);
 
   ground_ring_pub = nh.advertise<geometry_msgs::Pose>("/arm_control/parking_point", 1000);
@@ -438,6 +447,10 @@ int main(int argc, char** argv) {
 
   arm_pub =
       nh.advertise<trajectory_msgs::JointTrajectory>("/turtlebot_arm/arm_controller/command", 1000);
+
+  // Create a buffer and listener for coordinate transforms
+  tfBuffer   = new tf2_ros::Buffer;
+  tfListener = new tf2_ros::TransformListener(*tfBuffer);
 
   ros::spin();
 
