@@ -355,7 +355,7 @@ class face_localizer:
             yaw = euler[2]
 
             angle_to_target_map = angle_to_target + yaw
-            #angle_to_target_map += np.pi / 2
+            # angle_to_target_map += np.pi / 2
 
             pose = Pose()
             pose.position.x = point_world.point.x
