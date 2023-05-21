@@ -13,7 +13,6 @@
 #include <visualization_msgs/Marker.h>
 #include <visualization_msgs/MarkerArray.h>
 #include <task3/ArmExtendSrv.h>
-#include <task3/ArmParkingSrv.h>
 #include <std_msgs/Bool.h>
 
 using namespace message_filters;
@@ -177,9 +176,6 @@ void getDepths(
     point.point.y         = 0;
     point.point.z         = x_target; //Try switching .y and .z
 
-    // Print point
-    ROS_INFO("Point: %f, %f, %f", point.point.x, point.point.y, point.point.z);
-
     // // Make a marker for the point
     // visualization_msgs::Marker marker;
     // marker.header.frame_id    = "camera_rgb_optical_frame";
@@ -317,11 +313,13 @@ std::vector<cv::Vec4f> detectCircles(cv::Mat input_img, cv::Mat output_img) {
     // Draw the circle outline
     // ROS_WARN("Circle radius: %d", radius);
 
-    // Draw the center of the circle
-    cv::circle(output_img, center, 3, cv::Scalar(0, 255, 0), -1);
+    if (debug){
+      // Draw the center of the circle
+      cv::circle(output_img, center, 3, cv::Scalar(0, 255, 0), -1);
 
-    // Draw the circle outline
-    cv::circle(output_img, center, radius, cv::Scalar(0, 0, 255), 1);
+      // Draw the circle outline
+      cv::circle(output_img, center, radius, cv::Scalar(0, 0, 255), 1);
+    }
   }
 
   return validCircles;
@@ -331,11 +329,8 @@ void image_callback(
     const sensor_msgs::Image::ConstPtr &rgb_image,
     const sensor_msgs::Image::ConstPtr &depth_image
 ) {
-  // printf("Image callback\n");
   if (!search)
     return;
-
-  // printf("Searching\n");
 
   cv_bridge::CvImageConstPtr cv_ptr;
   cv_bridge::CvImageConstPtr cv_rgb;
@@ -361,40 +356,6 @@ void image_callback(
 
   getDepths(circles, cv_ptr, cv_rgb, rgb_img, depth_image->header);
 }
-
-// void green_callback(task3::RingPoseMsg pose) {
-//   ROS_WARN("Green callback");
-
-//   // Move the arm to the position
-//   trajectory_msgs::JointTrajectory      trajectory;
-//   trajectory_msgs::JointTrajectoryPoint point;
-
-//   trajectory.joint_names.push_back("arm_shoulder_pan_joint");
-//   trajectory.joint_names.push_back("arm_shoulder_lift_joint");
-//   trajectory.joint_names.push_back("arm_elbow_flex_joint");
-//   trajectory.joint_names.push_back("arm_wrist_flex_joint");
-
-//   point.positions.push_back(0);
-//   point.positions.push_back(0.3);
-//   point.positions.push_back(0.9);
-//   point.positions.push_back(0);
-
-//   point.time_from_start = ros::Duration(1.0);
-
-//   trajectory.points.push_back(point);
-
-//   arm_pub.publish(trajectory);
-
-//   //wait 2 sec
-//   ros::Duration(5.0).sleep();
-//   search = true;
-// }
-
-// void stop_green_callback(task3::RingPoseMsg pose) {
-//   ROS_WARN("Stop green callback");
-//   search = false;
-// }
-
 
 // Fuunction that returns a pose named scanCallback
 void scanCallback(const std_msgs::Bool::ConstPtr& doSearch) {
@@ -458,17 +419,11 @@ int main(int argc, char** argv) {
   // Service for extending the arm
   ros::ServiceServer arm_service = nh.advertiseService("/arm_control/extend", extendArmCallback);
 
-  // // Service for scanning the ground
-  // ros::ServiceServer scan_service = nh.advertiseService("/arm_control/scan", scanCallback);
-
   // subscribwer for scanning the ground
   ros::Subscriber scan_sub = nh.subscribe("/arm_control/scan", 1, &scanCallback);
 
 
   marker_pub = nh.advertise<visualization_msgs::MarkerArray>("ground_ring_marker", 10000);
-
-  // ros::Subscriber green_sub =
-  //     nh.subscribe("/custom_msgs/nav/green_ring_detected", 1, &green_callback);
 
   ground_ring_pub = nh.advertise<geometry_msgs::Pose>("/arm_control/parking_point", 1000);
 
