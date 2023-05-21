@@ -412,9 +412,9 @@ class Navigator {
         currentExploringState = FSMExploringState::AT_FACE;
 
         task3::FaceDialogueSrv srv;
+        // Dialogue performed in this step
+        currentExploringState = FSMExploringState::DIALOGUE;
         if (faceDialogueService->call(srv)) {
-          // Dialogue performed in this step
-          currentExploringState = FSMExploringState::DIALOGUE;
           ROS_INFO("Face dialogue service called successfully");
           ROS_INFO(
               "useful: %d, color 1: %s, color 2: %s",
@@ -481,6 +481,9 @@ class Navigator {
           currentExploringState = FSMExploringState::POSTER_OCR;
           ROS_INFO("Poster exploration service called successfully");
           ROS_INFO("%d prize, %s ring_color", srv.response.prize, srv.response.ring_color.c_str());
+          char buffer[128];
+          sprintf(buffer, "I have detected %d  BTC prize with %s ring_color", srv.response.prize, srv.response.ring_color.c_str());
+          describeObject(buffer, ".");
 
           // Save poster data in this step
           currentExploringState = FSMExploringState::SAVE_POSTER;

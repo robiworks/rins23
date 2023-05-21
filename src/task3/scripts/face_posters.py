@@ -235,6 +235,8 @@ class face_localizer:
 
     def poster_exploration_callback(self, req):
         prize, ring_color = self.analyze_poster()
+        if prize == 0:
+            prize, ring_color = self.analyze_poster()
         return PosterExplorationSrvResponse(ring_color=ring_color, prize=prize)
 
     def analyze_poster(self):
@@ -320,7 +322,7 @@ class face_localizer:
 
         if ring == "" or most_common_prize == 0:
             print("[-] Poster analysis failed")
-            return 11
+            return 0, ""
 
         # descriptors = self.detect_faces()
         return most_common_prize, ring

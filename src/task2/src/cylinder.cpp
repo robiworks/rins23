@@ -59,7 +59,12 @@ void cloud_cb(const pcl::PCLPointCloud2ConstPtr &cloud_blob) {
   pass.setInputCloud(cloud);
   pass.setFilterFieldName("z");
   pass.setFilterLimits(0, 1.5);
+  pass.setFilterFieldName("x");
+  pass.setFilterLimits(-2, 2);
+  pass.setFilterFieldName("y");
+  pass.setFilterLimits(-2, 2);
   pass.filter(*cloud_filtered);
+
 
   // Estimate point normals
   ne.setSearchMethod(tree);

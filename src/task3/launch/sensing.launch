@@ -8,5 +8,11 @@
 
     <node pkg="task3" type="task3_cylinder_detection" name="cylinder_detection" output="screen">
     </node>
+
+    <node pkg="task3" type="face_posters.py" name="face_posters" output="screen">
+    </node>
+
+    <node pkg="task3" type="dialogue.py" name="dialogue" output="screen">
+    </node>
 </launch>
 
