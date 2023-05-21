@@ -16,7 +16,7 @@ from sensor_msgs.msg import Image
 from geometry_msgs.msg import PointStamped, Vector3, Pose
 from cv_bridge import CvBridge, CvBridgeError
 from visualization_msgs.msg import Marker, MarkerArray
-from std_msgs.msg import ColorRGBA
+from std_msgs.msg import ColorRGBA, Bool
 import numpy as np
 from PIL import Image as PILImage
 
@@ -25,10 +25,16 @@ from actionlib_msgs.msg import GoalID
 import torch
 from facenet_pytorch import MTCNN, InceptionResnetV1
 from torchvision.transforms import ToTensor
-from task3.msg import FacePositionMsg, PosterContentMsg
+from task3.msg import FacePositionMsg
 from tf.transformations import euler_from_quaternion, quaternion_from_euler
 import tf.transformations as tf_transformations
 import geometry_msgs.msg
+from task3.srv import (
+    PosterExplorationSrv,
+    PosterExplorationSrvResponse,
+    FaceDialogueSrv,
+    FaceDialogueSrvResponse,
+)
 
 import easyocr
 
@@ -40,7 +46,7 @@ RADIUS = 3
 FACE_HEIGHT = 120
 FACE_WIDTH = 90
 
-POSTER_WORDS = ["WAN", "TED", "WANT", "WA", "NT"]
+POSTER_WORDS = ["WAN", "TED", "WA", "AN", "NT", "TE", "ED", "10", "1", "0", "1o"]
 RING_INDICATORS = {
     "blue": ["BL", "UE", "LU"],
     "green": ["GR", "EE", "EN", "RE"],
@@ -189,35 +195,47 @@ class face_localizer:
             queue_size=10,
         )
 
-        self.custom_msgs_poster_analyzed = rospy.Publisher(
-            "/custom_msgs/poster_exploration_done",
-            PosterContentMsg,
-            queue_size=10,
-        )
+        self.face_marker_pub = rospy.Publisher("/faces", MarkerArray, queue_size=10)
+
+        self.poster_marker_pub = rospy.Publisher("/posters", MarkerArray, queue_size=10)
+
+        self.face_marker_array = MarkerArray()
+        self.poster_marker_array = MarkerArray()
+        self.face_marker_id = 0
+        self.poster_marker_id = 0
+        self.marker_duration = rospy.Duration(3600)
 
         ###             ###
         ### SUBSCRIBERS ###
         ###             ###
 
-        self.custom_msgs_face_approached = rospy.Subscriber(
-            "/custom_msgs/face_approached",
-            FacePositionMsg,
-            self.face_approached_callback,
-            queue_size=10,
+        # self.custom_msgs_face_approached = rospy.Subscriber(
+        #    "/custom_msgs/face_approached",
+        #    Bool,
+        #    self.face_approached_callback,
+        #    queue_size=10,
+        # )
+
+        ###          ###
+        ### SERVICES ###
+        ###          ###
+
+        self.poster_exploration_service = rospy.Service(
+            "/poster_exploration",
+            PosterExplorationSrv,
+            self.poster_exploration_callback,
         )
 
-        self.custom_msgs_poster_approached = rospy.Subscriber(
-            "/custom_msgs/poster_approached",
-            FacePositionMsg,
-            self.poster_approached_callback,
-            queue_size=10,
+        self.face_dialogue_service = rospy.Service(
+            "/face_dialogue", FaceDialogueSrv, self.face_dialogue_callback
         )
 
-    def face_approached_callback(self, msg):
-        pass
+    def face_dialogue_callback(self, msg):
+        return FaceDialogueSrvResponse(useful=False, color1="blue", color2="green")
 
-    def poster_approached_callback(self, msg):
-        self.analyze_poster()
+    def poster_exploration_callback(self, req):
+        prize, ring_color = self.analyze_poster()
+        return PosterExplorationSrvResponse(ring_color=ring_color, prize=prize)
 
     def analyze_poster(self):
         prizes = []
@@ -304,24 +322,22 @@ class face_localizer:
             print("[-] Poster analysis failed")
             return 11
 
-        msg = PosterContentMsg()
-        msg.prize = most_common_prize
-        msg.ring_color = ring
-        descriptors = self.detect_faces()
-        for (
-            face_descriptor,
-            fdf,
-            rgb_image,
-            face_distance,
-            box,
-            depth_time,
-        ) in descriptors:
-            fdf.poster_content = msg
-            if self.poster_descriptors.add_descriptor(fdf):
-                print("[+] Poster recognition is done.")
-                self.custom_msgs_poster_analyzed.publish(msg)
-            else:
-                print("[-] Poster already detected.")
+        # descriptors = self.detect_faces()
+        return most_common_prize, ring
+        # for (
+        #    face_descriptor,
+        #    fdf,
+        #    rgb_image,
+        #    face_distance,
+        #    box,
+        #    depth_time,
+        # ) in descriptors:
+        #    fdf.poster_content = msg
+        #    if self.poster_descriptors.add_descriptor(fdf):
+        #        print("[+] Poster recognition is done.")
+        #        self.custom_msgs_poster_analyzed.publish(msg)
+        #    else:
+        #        print("[-] Poster already detected.")
 
     def get_pose(self, coords, dist, stamp, return_angle=False):
         k_f = 554
@@ -355,7 +371,7 @@ class face_localizer:
             yaw = euler[2]
 
             angle_to_target_map = angle_to_target + yaw
-            # angle_to_target_map += np.pi / 2
+            angle_to_target_map += np.pi / 2
 
             pose = Pose()
             pose.position.x = point_world.point.x
@@ -386,10 +402,19 @@ class face_localizer:
 
         ocr_res = self.ocr_image(rgb_image)
 
-        for word in ocr_res:
-            for poster_word in POSTER_WORDS:
-                if poster_word in word:
-                    return True
+        print("OCR _RRES", ocr_res)
+
+        if ocr_res is None:
+            return False
+
+        if len(ocr_res) == 0:
+            return False
+
+        if len(ocr_res) >= 1:
+            if len(ocr_res[0]) == 0:
+                return False
+            if len(ocr_res[0]) >= 1:
+                return True
 
         return False
 
@@ -525,14 +550,45 @@ class face_localizer:
                 if is_poster:
                     self.poster_descriptors.add_descriptor(fdf)
                     print("[~] Face is on the poster")
+                    self.send_marker(fdf, "poster")
                 else:
                     print("[~] Face is not on the poster")
+                    self.send_marker(fdf, "face")
                 print("[~] Face added to the database")
                 self.report_close_face(face_distance, box, depth_time, is_poster)
 
                 # Save the image of detected face
                 cv2.imwrite(f"/tmp/rins_{time.time()}.jpg", np.array(rgb_image))
                 print("[+] Face saved")
+
+    def send_marker(self, fdf, m_type):
+        if m_type == "poster":
+            self.poster_marker_id += 1
+            marker_id = self.poster_marker_id
+            marker_color = ColorRGBA(0, 255, 0, 1.0)
+        elif m_type == "face":
+            self.face_marker_id += 1
+            marker_id = self.face_marker_id
+            marker_color = ColorRGBA(127, 0, 255, 1.0)
+
+        marker = Marker()
+        marker.header.frame_id = "map"
+        marker.header.stamp = rospy.Time.now()
+        marker.ns = m_type
+        marker.id = marker_id
+        marker.type = Marker.ARROW
+        marker.action = Marker.ADD
+        marker.pose = fdf.pose
+        marker.lifetime = self.marker_duration
+        marker.scale = Vector3(0.2, 0.2, 0.2)
+        marker.color = marker_color
+
+        if m_type == "poster":
+            self.poster_marker_array.markers.append(marker)
+            self.poster_marker_pub.publish(self.poster_marker_array)
+        elif m_type == "face":
+            self.face_marker_array.markers.append(marker)
+            self.face_marker_pub.publish(self.face_marker_array)
 
     def report_close_face(self, face_distance, box, depth_time, is_poster):
         x1, y1, x2, y2 = box
@@ -541,7 +597,7 @@ class face_localizer:
         # Get the pose of the face
         pose, angle = self.get_pose(
             (x1, x2, y1, y2),
-            max(face_distance - 0.40, 0.30),
+            max(face_distance - 0.45, 0.20),
             depth_time,
             return_angle=True,
         )

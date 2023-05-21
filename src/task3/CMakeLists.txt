@@ -49,14 +49,16 @@ add_message_files(
   FILES
   RingPoseMsg.msg
   ColorMsg.msg
-  PosterContentMsg.msg
   FacePositionMsg.msg
 )
 
 add_service_files(
     FILES
+    PosterExplorationSrv.srv
+    FaceDialogueSrv.srv
     ArmExtendSrv.srv
     ArmParkingSrv.srv
+    CylinderFaceSrv.srv
     FaceDialogueSrv.srv
 )
 
