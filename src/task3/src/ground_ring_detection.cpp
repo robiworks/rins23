@@ -313,7 +313,7 @@ std::vector<cv::Vec4f> detectCircles(cv::Mat input_img, cv::Mat output_img) {
     // Draw the circle outline
     // ROS_WARN("Circle radius: %d", radius);
 
-    if (debug){
+    if (debug) {
       // Draw the center of the circle
       cv::circle(output_img, center, 3, cv::Scalar(0, 255, 0), -1);
 
