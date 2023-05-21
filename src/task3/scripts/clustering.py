@@ -281,6 +281,11 @@ class Clustering:
         rpm.color.g = msg.color.g
         rpm.color.b = msg.color.b
 
+        rpm.pose.orientation.x = msg.pose.orientation.x
+        rpm.pose.orientation.y = msg.pose.orientation.y
+        rpm.pose.orientation.z = msg.pose.orientation.z
+        rpm.pose.orientation.w = msg.pose.orientation.w
+
         rgb = np.array([msg.color.r, msg.color.g, msg.color.b])
         color = self.color_reverse_lookup(rgb, "cylinder")
         rpm.color_name = color

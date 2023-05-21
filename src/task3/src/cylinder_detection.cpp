@@ -1,4 +1,5 @@
 #include "geometry_msgs/PointStamped.h"
+#include "geometry_msgs/PoseWithCovarianceStamped.h"
 #include "pcl/point_cloud.h"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.h"
 #include "tf2_ros/transform_listener.h"
@@ -18,6 +19,9 @@
 #include <ros/ros.h>
 #include <sensor_msgs/PointCloud2.h>
 #include <task3/RingPoseMsg.h>
+#include <tf2/LinearMath/Quaternion.h>
+#include <tf2/LinearMath/Vector3.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 #include <visualization_msgs/Marker.h>
 
 ros::Publisher cylinder_publisher;
@@ -28,6 +32,23 @@ typedef pcl::PointXYZRGB PointT;
 
 void cloud_cb(const pcl::PCLPointCloud2ConstPtr &cloud_blob) {
   // All the objects needed
+  // Get the robot pose
+  geometry_msgs::PoseWithCovarianceStamped::ConstPtr pose_msg =
+      ros::topic::waitForMessage<geometry_msgs::PoseWithCovarianceStamped>("/amcl_pose");
+  geometry_msgs::Pose robot_pose;
+
+  if (pose_msg != nullptr) {
+    robot_pose = pose_msg->pose.pose;
+    ROS_INFO(
+        "Robot pose: %f, %f, %f",
+        robot_pose.position.x,
+        robot_pose.position.y,
+        robot_pose.position.z
+    );
+  } else {
+    ROS_WARN("No message received on /amcl_pose");
+    return;
+  }
 
   ros::Time time_rec, time_test;
   time_rec = ros::Time::now();
@@ -145,15 +166,15 @@ void cloud_cb(const pcl::PCLPointCloud2ConstPtr &cloud_blob) {
     double real_x = centroid[0];
     double real_y = centroid[1];
     double real_z = centroid[2];
-    
+
     // Safety margin - this is the distance by which you want to virtually "bring closer" the cylinder.
-    double safety_margin = 0.3; 
-    
+    double safety_margin = 0.3;
+
     // Calculate the direction vector from the robot to the cylinder (assuming robot is at (0, 0, 0))
     double direction_x = real_x / std::sqrt(real_x * real_x + real_y * real_y + real_z * real_z);
     double direction_y = real_y / std::sqrt(real_x * real_x + real_y * real_y + real_z * real_z);
     double direction_z = real_z / std::sqrt(real_x * real_x + real_y * real_y + real_z * real_z);
-    
+
     // Subtract the safety margin from the real position in the direction of the cylinder
     double virtual_x = real_x - safety_margin * direction_x;
     double virtual_y = real_y - safety_margin * direction_y;
@@ -192,6 +213,26 @@ void cloud_cb(const pcl::PCLPointCloud2ConstPtr &cloud_blob) {
     std::cerr << "point_map: " << point_map.point.x << " " << point_map.point.y << " "
               << point_map.point.z << std::endl;
 
+    tf2::Vector3 robot_pose_vector(
+        robot_pose.position.x,
+        robot_pose.position.y,
+        robot_pose.position.z
+    );
+    tf2::Vector3 point_map_vector(point_map.point.x, point_map.point.y, point_map.point.z);
+    tf2::Vector3 direction_to_cylinder = point_map_vector - robot_pose_vector;
+
+    // normalize direction_to_cylinder
+    direction_to_cylinder.normalize();
+
+    tf2::Vector3 robot_front(1, 0, 0);
+    tf2::Vector3 up(0, 0, 1);
+    tf2::Vector3 right = robot_front.cross(up);
+
+    tf2Scalar yaw = atan2(direction_to_cylinder.getY(), direction_to_cylinder.getX());
+
+    tf2::Quaternion rotation;
+    rotation.setRPY(0, 0, yaw);
+
     task3::RingPoseMsg  cylinder_msg;
     geometry_msgs::Pose pose;
 
@@ -199,10 +240,14 @@ void cloud_cb(const pcl::PCLPointCloud2ConstPtr &cloud_blob) {
     pose.position.y = point_map.point.y;
     pose.position.z = point_map.point.z;
 
-    cylinder_msg.color.r = r_avg;
-    cylinder_msg.color.g = g_avg;
-    cylinder_msg.color.b = b_avg;
-    cylinder_msg.pose   = pose;
+    cylinder_msg.color.r            = r_avg;
+    cylinder_msg.color.g            = g_avg;
+    cylinder_msg.color.b            = b_avg;
+    cylinder_msg.pose               = pose;
+    cylinder_msg.pose.orientation.x = rotation.x();
+    cylinder_msg.pose.orientation.y = rotation.y();
+    cylinder_msg.pose.orientation.z = rotation.z();
+    cylinder_msg.pose.orientation.w = rotation.w();
 
     cylinder_publisher.publish(cylinder_msg);
   }
