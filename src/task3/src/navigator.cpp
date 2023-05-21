@@ -597,12 +597,12 @@ class Navigator {
         goalState = client->getState();
       }
 
-      if (isCancelled) {
-        // Reset cancelled state (happens when cancelling an interest goal to approach face/poster)
-        ROS_INFO("Cancelling interest point navigation monitoring to approach face or poster");
-        isCancelled = false;
-        return;
-      }
+      // if (isCancelled) {
+      //   // Reset cancelled state (happens when cancelling an interest goal to approach face/poster)
+      //   ROS_INFO("Cancelling interest point navigation monitoring to approach face or poster");
+      //   isCancelled = false;
+      //   return;
+      // }
 
       // Handle terminal states
       switch (goalState.state_) {
