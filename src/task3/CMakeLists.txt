@@ -59,6 +59,7 @@ add_service_files(
     ArmExtendSrv.srv
     ArmParkingSrv.srv
     CylinderFaceSrv.srv
+    FaceDialogueSrv.srv
 )
 
 generate_messages(
