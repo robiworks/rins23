@@ -332,7 +332,6 @@ class Navigator {
         // Transition state and optionally say the ring's color
         currentExploringState = FSMExploringState::RING_DETECTED;
         client->cancelGoal();
-        isCancelled = true;
         describeObject("ring", msg->color_name);
 
         // Save the ring's color and location
@@ -363,7 +362,6 @@ class Navigator {
         // Transition state and say the cylinder's color
         currentExploringState = FSMExploringState::CYLINDER_DETECTED;
         client->cancelGoal();
-        isCancelled = true;
         describeObject("cylinder", msg->color_name);
 
         // Save the cylinder's color and location
@@ -403,6 +401,7 @@ class Navigator {
 
         ROS_INFO("Approaching face");
         client->cancelGoal();
+        isCancelled = true;
         approachPoint(approachPose);
 
         describeObject("face", "dumb");
@@ -467,6 +466,7 @@ class Navigator {
 
         ROS_INFO("Approaching poster");
         client->cancelGoal();
+        isCancelled = true;
         approachPoint(approachPose);
 
         describeObject("poster", "dumb");
@@ -479,10 +479,17 @@ class Navigator {
         if (posterExplorationService->call(srv)) {
           // OCR performed in this step
           currentExploringState = FSMExploringState::POSTER_OCR;
+
           ROS_INFO("Poster exploration service called successfully");
           ROS_INFO("%d prize, %s ring_color", srv.response.prize, srv.response.ring_color.c_str());
+
           char buffer[128];
-          sprintf(buffer, "I have detected %d  BTC prize with %s ring_color", srv.response.prize, srv.response.ring_color.c_str());
+          sprintf(
+              buffer,
+              "I have detected %d BTC prize with %s ring_color",
+              srv.response.prize,
+              srv.response.ring_color.c_str()
+          );
           describeObject(buffer, ".");
 
           // Save poster data in this step
