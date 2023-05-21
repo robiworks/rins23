@@ -272,7 +272,36 @@ class Navigator {
 
       // Should be at the ring approach point here
       currentParkingState = FSMParkingState::FINDING_SPOT;
-      // TODO Extend arm, find parking point, park into circle
+
+      // Extend arm
+      task3::ArmExtendSrv extend;
+      extend.request.extend = true;
+      if (armExtendService->call(extend)) {
+        // Search for parking spot center
+        task3::ArmParkingSrv parking;
+        parking.request.search = true;
+
+        if (armParkingService->call(parking)) {
+          ROS_INFO(
+              "Parking point: (x: %f, y: %f)",
+              parking.response.pose.position.x,
+              parking.response.pose.position.y
+          );
+
+          // TODO Park into spot
+          currentParkingState = FSMParkingState::MANEUVERING;
+          approachPoint(parking.response.pose);
+
+          soundClient->say("I'm done!");
+          ros::Duration(3.0).sleep();
+
+          // TODO Wave with the manipulator
+        } else {
+          ROS_ERROR("Failed to call arm parking service");
+        }
+      } else {
+        ROS_ERROR("Failed to call arm extend service");
+      }
     }
 
     // Clean up (used on SIGINT)
@@ -568,6 +597,8 @@ class Navigator {
             ROS_INFO("Finished approaching cylinder!");
           } else if (currentMainState == FSMMainState::PARKING && currentParkingState == FSMParkingState::DRIVING) {
             ROS_INFO("Finished approaching parking ring!");
+          } else if (currentMainState == FSMMainState::PARKING && currentParkingState == FSMParkingState::MANEUVERING) {
+            ROS_INFO("Finished maneuvering into parking spot!");
           } else {
             ROS_INFO("Successfully navigated to interest point!");
           }
