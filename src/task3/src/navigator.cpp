@@ -144,8 +144,9 @@ class Navigator {
 
     // Navigate through a list (vector) of points
     void navigateList(vector<NavigatorPoint> points) {
-      int len = points.size();
+      ROS_INFO("-------- Starting EXPLORING phase");
 
+      int len = points.size();
       for (int i = 0; i < len; i++) {
         currentGoal = points[i];
         navigateTo(points[i]);
@@ -162,6 +163,7 @@ class Navigator {
 
         // Transition to searching state
         currentMainState = FSMMainState::SEARCHING;
+        ROS_INFO("-------- Starting SEARCHING phase");
         startSearchingPhase();
       } else {
         ROS_ERROR(
@@ -173,6 +175,11 @@ class Navigator {
 
     // Searching phase (main state) of FSM
     void startSearchingPhase() {
+      if (dialogueCylinderColors.size() < 2) {
+        ROS_ERROR("No cylinder colors saved, aborting searching phase!");
+        cleanUp();
+      }
+
       // Find cylinder colors and their locations
       std::string                col1 = toUpperCase(dialogueCylinderColors.at(0));
       std::string                col2 = toUpperCase(dialogueCylinderColors.at(1));
@@ -251,13 +258,15 @@ class Navigator {
 
     // Take the robber to assigned prison
     void takeRobberToPrison(std::string prisonColor) {
-      // Tell the robot to enter the car
-      soundClient->say("Hey mister robber, take a spin in our robot car!");
-      ros::Duration(5.0).sleep();
+      ROS_INFO("-------- Starting PARKING phase");
 
       // Transition to parking main state
       currentMainState    = FSMMainState::PARKING;
       currentParkingState = FSMParkingState::DRIVING;
+
+      // Tell the robot to enter the car
+      soundClient->say("Hey mister robber, take a spin in our robot car!");
+      ros::Duration(5.0).sleep();
 
       for (int i = 0; i < savedRings.size(); i++) {
         task3::RingPoseMsgConstPtr item = savedRings.at(i);
@@ -386,7 +395,7 @@ class Navigator {
 
         ROS_INFO("Approaching face");
         client->cancelGoal();
-        isCancelled = true;
+        // isCancelled = true;
         approachPoint(approachPose);
 
         describeObject("face", "dumb");
@@ -451,7 +460,7 @@ class Navigator {
 
         ROS_INFO("Approaching poster");
         client->cancelGoal();
-        isCancelled = true;
+        // isCancelled = true;
         approachPoint(approachPose);
 
         describeObject("poster", "dumb");
@@ -517,6 +526,7 @@ class Navigator {
 
         // Move to END state
         currentMainState = FSMMainState::END;
+        ROS_INFO("-------- Transitioned to END phase");
       } else {
         warnInvalidState("Cannot process parking point detection outside Parking.FindingSpot!");
       }
