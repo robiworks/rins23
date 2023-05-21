@@ -281,6 +281,11 @@ class Clustering:
         rpm.color.g = msg.color.g
         rpm.color.b = msg.color.b
 
+        rpm.pose.orientation.x = msg.pose.orientation.x
+        rpm.pose.orientation.y = msg.pose.orientation.y
+        rpm.pose.orientation.z = msg.pose.orientation.z
+        rpm.pose.orientation.w = msg.pose.orientation.w
+
         rgb = np.array([msg.color.r, msg.color.g, msg.color.b])
         color = self.color_reverse_lookup(rgb, "cylinder")
         rpm.color_name = color
@@ -338,21 +343,11 @@ class Clustering:
 
         is_new = self.ring_holder.update_ring(rpm, color)
 
-        if color == "Green":
-            rpm.color_name = "Green"
-            if is_new:
-                print("Green ring detected at: ", rpm)
-                self.green_ring_pub.publish(rpm)
-                # self.color_pub.publish(ColorMsg(color=color))
-                self.publish_ring_marker(rpm)
-            print("Green ring detected at: ", rpm)
-        else:
-            rpm.color_name = color
-            if is_new:
-                self.ring_pub.publish(rpm)
-                # self.color_pub.publish(ColorMsg(color=color))
-                self.publish_ring_marker(rpm)
-            print(f"{color} ring detected at:", rpm)
+        rpm.color_name = color
+        if is_new:
+            self.ring_pub.publish(rpm)
+            self.publish_ring_marker(rpm)
+        print(f"{color} ring detected at:", rpm)
 
     def color_reverse_lookup(self, rgb, type="ring"):
         def closest_color_ring(rgb):
