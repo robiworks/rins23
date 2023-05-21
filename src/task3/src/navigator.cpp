@@ -228,6 +228,8 @@ class Navigator {
 
           // Check if this was a parking maneuver
           if (isParking) {
+            // When we reach the parking spot, send a topic, so that we can start searching for ground ring
+            
             soundClient->say("I have finished parking myself!");
             ros::Duration(4.0).sleep();
             currentState = NavigatorState::FINISHED;
