@@ -172,7 +172,6 @@ void cloud_cb(const pcl::PCLPointCloud2ConstPtr &cloud_blob) {
     double real_x = centroid[0];
     double real_y = centroid[1];
     double real_z = centroid[2];
-    ROS_ERROR("real_x: %f, real_y: %f, real_z: %f", real_x, real_y, real_z);
 
     // Safety margin - this is the distance by which you want to virtually "bring closer" the cylinder.
     double safety_margin = 0.3;

@@ -261,9 +261,11 @@ class Navigator {
         //  }
         //}
         task3::FineApproachSrv fineApproach;
-        fineApproach.request.color = cylinder.color_name;
+        fineApproach.request.action = "approach";
         if (fineApproachService->call(fineApproach)) {
           if (fineApproach.response.success) {
+              describeObject("cylinder apoached", "fuck you kurac");
+              ros::Duration(5.0).sleep();
           } else {
             ROS_ERROR("Fine approach service failed");
           }
@@ -272,6 +274,18 @@ class Navigator {
           ROS_ERROR("Failed to call fine approach service");
         }
         // Move arm back to default position
+        fineApproach.request.action = "retreat";
+        if (fineApproachService->call(fineApproach)) {
+          if (fineApproach.response.success) {
+              describeObject("cylinder retreated", "fuck you kurac");
+              ros::Duration(5.0).sleep();
+          } else {
+            ROS_ERROR("Fine approach service failed");
+          }
+
+        } else {
+          ROS_ERROR("Failed to call fine approach service");
+        }
         task3::ArmExtendSrv retract;
         retract.request.extend = false;
         armExtendService->call(retract);
@@ -441,8 +455,9 @@ class Navigator {
               srv.response.color1.c_str(),
               srv.response.color2.c_str()
           );
+          bool kurac = srv.response.useful;
 
-          if (srv.response.useful) {
+          if (kurac) {
             // Save colors from dialogue in this step
             currentExploringState = FSMExploringState::SAVE_DIALOGUE;
             ROS_INFO("Saving colors from dialogue");

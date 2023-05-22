@@ -334,6 +334,10 @@ class Clustering:
         )
         rgb = np.array([msg.color.r, msg.color.g, msg.color.b])
         color = self.color_reverse_lookup(rgb, "ring")
+
+        if color == "unknown":
+           return
+
         idx = list(RINGS_ON_POLYGON.keys()).index(color)
 
         rpm = self.differnatial_localizers[idx].add_point(x)
