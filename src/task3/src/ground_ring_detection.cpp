@@ -175,7 +175,7 @@ void getDepths(
 
     geometry_msgs::PointStamped point;
 
-    point.header.frame_id = "camera_rgb_optical_frame";
+    point.header.frame_id = "arm_camera_rgb_optical_frame";
     point.header.stamp    = depth_header.stamp;
     point.point.x         = -y_target;
     point.point.y         = 0;
@@ -211,7 +211,7 @@ void getDepths(
     geometry_msgs::Pose pose_msg;
 
     try {
-      if (detection_count < 5) {
+      if (detection_count < 15) {
         ROS_WARN("Not enough detections");
         detections.push_back(point);
         detection_count++;
