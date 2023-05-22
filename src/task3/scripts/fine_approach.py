@@ -33,8 +33,12 @@ class FineApproachNode:
 
         if action == "approach":
             rospy.loginfo("Approaching")
+            twist.linear.x = 0.1
+            twist.angular.z = 0.0
+            self.cmd_pub.publish(twist)
+            rospy.sleep(1.0)
             for i in range(5):
-                twist.linear.x = 0.05
+                twist.linear.x = 0.01
                 twist.angular.z = 0.0
                 self.cmd_pub.publish(twist)
                 rospy.sleep(0.5)

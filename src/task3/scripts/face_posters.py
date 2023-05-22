@@ -154,6 +154,7 @@ class FaceDescriptors:
     def is_similar(self, fdf: Face) -> bool:
         for face in self.faces_with_descriptors:
             norm = self.hellinger_distance(face.descriptor, fdf.descriptor)
+            print("NORM", norm)
             if norm < FACE_DIFF_THRESHOLD:
                 return True
         return False
@@ -238,7 +239,8 @@ class face_localizer:
         )
 
         self.is_robber_service = rospy.Service(
-            "/is_robber", CylinderFaceSrv , self.is_robber_service)
+            "/is_robber", CylinderFaceSrv, self.is_robber_service
+        )
 
     def poster_exploration_callback(self, req):
         AM_I_IN_SERVICE = True
@@ -250,30 +252,34 @@ class face_localizer:
 
     def is_robber_service(self, req):
         AM_I_IN_SERVICE = True
-        descriptors = self.detect_faces(camera_path="/arm_camera/rgb/image_raw")
-        if (
-            descriptors is None
-            or len(descriptors) == 0
-            or descriptors == 0
-            or isinstance(descriptors, int)
-        ):
-            rospy.logerr("No faces detected! Moj kurac is returning")
-            AM_I_IN_SERVICE = False
-            return CylinderFaceSrvResponse(correct_robber=False, ring_color="")
 
-        for (
-            face_descriptor,
-            fdf,
-            rgb_image,
-            face_distance,
-            box,
-            depth_time,
-        ) in descriptors:
-            is_robber = self.close_poster_descriptors.is_similar(fdf)
-            if is_robber == True:
-                rospy.loginfo("Robber detected!")
-                AM_I_IN_SERVICE = False
-                return CylinderFaceSrvResponse(correct_robber=True, ring_color="blue")
+        for i in range(3):
+            descriptors = self.detect_robber()
+            rospy.sleep(0.1)
+            if (
+                descriptors is None
+                or len(descriptors) == 0
+                or descriptors == 0
+                or isinstance(descriptors, int)
+            ):
+                rospy.loginfo("No faces detected!")
+                continue
+
+            for (
+                face_descriptor,
+                fdf,
+                rgb_image,
+                face_distance,
+                box,
+                depth_time,
+            ) in descriptors:
+                is_robber = self.close_poster_descriptors.is_similar(fdf)
+                if is_robber == True:
+                    rospy.loginfo("Robber detected!")
+                    AM_I_IN_SERVICE = False
+                    return CylinderFaceSrvResponse(
+                        correct_robber=True, ring_color="blue"
+                    )
 
         AM_I_IN_SERVICE = False
         return CylinderFaceSrvResponse(correct_robber=False, ring_color="")
@@ -365,12 +371,12 @@ class face_localizer:
 
         descriptors = self.detect_faces()
         for (
-           face_descriptor,
-           fdf,
-           rgb_image,
-           face_distance,
-           box,
-           depth_time,
+            face_descriptor,
+            fdf,
+            rgb_image,
+            face_distance,
+            box,
+            depth_time,
         ) in descriptors:
             fdf.ring_color = ring
             self.close_poster_descriptors.add_descriptor(fdf)
@@ -456,7 +462,7 @@ class face_localizer:
 
         return False
 
-    def detect_faces(self, camera_path="/camera/rgb/image_raw/"):
+    def detect_robber(self, camera_path="/arm_camera/rgb/image_raw/"):
         descriptors = []
         try:
             rgb_image_message = rospy.wait_for_message(camera_path, Image)
@@ -465,9 +471,73 @@ class face_localizer:
             return 0
 
         try:
-            depth_image_message = rospy.wait_for_message(
-                "/camera/depth/image_raw/", Image
+            rgb_image = self.bridge.imgmsg_to_cv2(rgb_image_message, "bgr8")
+        except CvBridgeError as e:
+            print(e)
+
+        self.dims = rgb_image.shape
+        rgb_image = cv2.cvtColor(rgb_image, cv2.COLOR_BGR2RGB)
+        rgb_image = PILImage.fromarray(rgb_image)
+
+        # Detect faces and extract descriptors
+        with torch.no_grad():
+            faces_cropped = self.mtcnn(rgb_image, save_path=None)
+            # Get the bounding boxes
+            batch_boxes, _ = self.mtcnn.detect(rgb_image, landmarks=False)
+
+        print("FACES CROPPED", faces_cropped)
+
+        if faces_cropped is None or batch_boxes is None:
+            return
+
+        print("FACES CROPPED", faces_cropped)
+
+        for face, box in zip(faces_cropped, batch_boxes):
+            x1, y1, x2, y2 = box
+            x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
+            # Get the pose of the face
+            depth_time = rgb_image_message.header.stamp
+
+            print("depth time", depth_time)
+
+            face_descriptor = (
+                self.resnet(face.to(self.device).unsqueeze(0)).cpu().detach().numpy()
             )
+
+            fdf = Face(box, 0.1, depth_time, None)
+            fdf.describe(face_descriptor)
+
+            print("face described")
+            if face_descriptor is None:
+                continue
+
+            if fdf is None:
+                continue
+
+            if box is None:
+                continue
+
+            if depth_time is None:
+                continue
+
+            descriptors.append((face_descriptor, fdf, rgb_image, 0.1, box, depth_time))
+
+        return descriptors
+
+    def detect_faces(
+        self,
+        camera_path="/camera/rgb/image_raw/",
+        depth_path="/camera/depth/image_raw/",
+    ):
+        descriptors = []
+        try:
+            rgb_image_message = rospy.wait_for_message(camera_path, Image)
+        except Exception as e:
+            print(e)
+            return 0
+
+        try:
+            depth_image_message = rospy.wait_for_message(depth_path, Image)
         except Exception as e:
             print(e)
             return 0
@@ -492,7 +562,6 @@ class face_localizer:
 
         # Convert image to rgb
         rgb_image = cv2.cvtColor(hsv_image, cv2.COLOR_HSV2RGB)
-
         rgb_image = PILImage.fromarray(rgb_image)
 
         # Detect faces and extract descriptors
@@ -669,7 +738,7 @@ def main():
     print("Face localizer initialized")
     while not rospy.is_shutdown():
         if not AM_I_IN_SERVICE:
-            face_finder.find_faces()
+           face_finder.find_faces()
         rate.sleep()
 
     cv2.destroyAllWindows()

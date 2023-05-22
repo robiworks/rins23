@@ -79,9 +79,9 @@ void moveArmScanRing() {
   trajectory.joint_names.push_back("arm_elbow_flex_joint");
   trajectory.joint_names.push_back("arm_wrist_flex_joint");
 
-  point.positions.push_back(0);
-  point.positions.push_back(0.3);
-  point.positions.push_back(0.9);
+  point.positions.push_back(0.1);
+  point.positions.push_back(0.01);
+  point.positions.push_back(1);
   point.positions.push_back(0);
 
   point.time_from_start = ros::Duration(1.0);
