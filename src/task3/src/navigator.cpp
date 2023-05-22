@@ -21,6 +21,7 @@
 #include <task3/FacePositionMsg.h>
 #include <task3/PosterExplorationSrv.h>
 #include <task3/RingPoseMsg.h>
+#include <task3/FineApproachSrv.h>
 
 using namespace std;
 using namespace cv;
@@ -84,7 +85,8 @@ class Navigator {
         ros::ServiceClient* faceDialogueSrv,
         ros::ServiceClient* armExtendSrv,
         ros::ServiceClient* cylinderFaceSrv,
-        ros::Publisher*     parkingPub
+        ros::Publisher*     parkingPub,
+        ros::ServiceClient* fineApproachSrv
     )
         : Navigator() {
       cmdvelPublisher          = cmdvelPub;
@@ -93,6 +95,7 @@ class Navigator {
       armExtendService         = armExtendSrv;
       cylinderFaceService      = cylinderFaceSrv;
       parkingPublisher         = parkingPub;
+      fineApproachService      = fineApproachSrv;
     }
 
     /* --------------------------------------------------------------------- */
@@ -189,6 +192,8 @@ class Navigator {
         task3::RingPoseMsgConstPtr item = savedCylinders.at(i);
         std::string                col  = toUpperCase(item->color_name);
 
+        printf("Cylinder %d: %s\n", i, col.c_str());
+
         if (col1 == col) {
           cyl1 = item;
           continue;
@@ -197,6 +202,11 @@ class Navigator {
           cyl2 = item;
           continue;
         }
+      }
+
+      if (!cyl1 || !cyl2) {
+        ROS_ERROR("Could not find the cylinders with the required colors");
+        return;
       }
 
       // Try cylinder 1 first
@@ -227,24 +237,34 @@ class Navigator {
       extend.request.extend = true;
 
       if (armExtendService->call(extend)) {
-        task3::CylinderFaceSrv look;
-        look.request.cylinder_color = cylinder->color_name;
+        //task3::CylinderFaceSrv look;
+        //look.request.cylinder_color = cylinder->color_name;
 
         // Look on top of cylinder
         currentSearchingState = FSMSearchingState::LOOKING;
-        if (cylinderFaceService->call(look)) {
-          if (look.response.correct_robber) {
-            // Found the robber
-            ROS_INFO("Robber found, ring color: %s", look.response.ring_color.c_str());
-            currentSearchingState = FSMSearchingState::ROBBER_FOUND;
-            prisonColor           = look.response.ring_color;
-          } else {
-            // Didn't find the robber here
-            ROS_INFO("Robber not found");
-            currentSearchingState = FSMSearchingState::ROBBER_NOT_FOUND;
-          }
-        }
+        //if (cylinderFaceService->call(look)) {
+        //  if (look.response.correct_robber) {
+        //    // Found the robber
+        //    ROS_INFO("Robber found, ring color: %s", look.response.ring_color.c_str());
+        //    currentSearchingState = FSMSearchingState::ROBBER_FOUND;
+        //    prisonColor           = look.response.ring_color;
+        //  } else {
+        //    // Didn't find the robber here
+        //    ROS_INFO("Robber not found");
+        //    currentSearchingState = FSMSearchingState::ROBBER_NOT_FOUND;
+        //  }
+        //}
+        task3::FineApproachSrv fineApproach;
+        fineApproach.request.color = cylinder->color_name;
+        if (fineApproachService->call(fineApproach)) {
+            if (fineApproach.response.success) {
+            } else {
+                ROS_ERROR("Fine approach service failed");
+            }
 
+        } else {
+            ROS_ERROR("Failed to call fine approach service");
+        }
         // Move arm back to default position
         task3::ArmExtendSrv retract;
         retract.request.extend = false;
@@ -547,6 +567,7 @@ class Navigator {
     ros::ServiceClient* faceDialogueService;
     ros::ServiceClient* armExtendService;
     ros::ServiceClient* cylinderFaceService;
+    ros::ServiceClient* fineApproachService;
 
     // Status booleans
     bool isKilled    = false;
@@ -806,21 +827,14 @@ int main(int argc, char* argv[]) {
 
   // Vector of interest points in the map
   vector<NavigatorPoint> interestPoints {
-    { -0.05452026426792145,  -0.798535943031311, true},
-    {   1.9770352840423584, -0.9166015386581421, true},
-    {   2.5234475135803223, -0.3696010112762451, true},
-    {   2.9102773666381836,  0.5500531792640686, true},
-    {   1.6900173425674438,  0.8855782747268677, true},
-    {   1.1343450546264648,  0.5771540403366089, true},
-    {    1.733999252319336,  1.1773782968521118, true},
-    {   2.2268130779266357,  1.7919968366622925, true},
-    {   1.8839367628097534,  1.0576781034469604, true},
-    {    0.955916702747345,   1.654266595840454, true},
-    {   0.8462879061698914,  2.8483240604400635, true},
-    {0.0020688343793153763,  3.0011651515960693, true},
-    {   -0.652366042137146,   2.405224323272705, true},
-    {  -0.9533275365829468,  1.5022640228271484, true},
-    {  -1.3491424322128296,  0.5857433080673218, true},
+    {-0.09607778489589691,    -0.7939493060112, true},
+    {   2.151202440261841, -0.6846528649330139, false},
+    {  2.4818778038024902,  0.7600842714309692, true},
+    {  1.3368371725082397,  0.9568080306053162, false},
+    {  1.0724883079528809,  0.5069646239280701, true},
+    {  0.9129006862640381,   2.723724365234375, false},
+    {-0.16708868741989136,   2.865935802459717, true},
+    { -1.2248432636260986,   2.177075147628784, false},
   };
 
   // Initialize publisher for robot rotation
@@ -836,6 +850,7 @@ int main(int argc, char* argv[]) {
       nh.serviceClient<task3::ArmExtendSrv>("/arm_control/extend");
   ros::ServiceClient cylinderFaceService =
       nh.serviceClient<task3::CylinderFaceSrv>("/cylinder_face");
+  ros::ServiceClient fineApproachService = nh.serviceClient<task3::FineApproachSrv>("/fine_approach");
 
   // Initialize Navigator
   navigator = new Navigator(
@@ -844,7 +859,8 @@ int main(int argc, char* argv[]) {
       &faceDialogueService,
       &armExtendService,
       &cylinderFaceService,
-      &parkingPub
+      &parkingPub,
+      &fineApproachService
   );
 
   // Initialize subscribers

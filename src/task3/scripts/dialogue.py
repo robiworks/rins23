@@ -25,6 +25,7 @@ class Dialogue:
         rospy.sleep(1)
 
     def handle_dialogue_service(self, req):
+        return FaceDialogueSrvResponse(useful=True, color1="red", color2="blue")
         rospy.loginfo("Dialogue service called.")
         resp = self.dialogue()
         rospy.loginfo("Dialoge service finished.")
@@ -37,8 +38,9 @@ class Dialogue:
     def dialogue(self):
         response = self.check_for_useful_info(self.ask_for_robber())
         response.extend(self.check_for_useful_info(self.ask_for_robber()))
+        response = list(set(response))
 
-        if len(response) == 0:
+        if len(response) != 2:
             self.sound_client.say("Sorry, I didn't get any useful information.")
         else:
             self.sound_client.say(
