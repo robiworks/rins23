@@ -1,3 +1,4 @@
+#include <cmath>
 #include <cv_bridge/cv_bridge.h>
 #include <geometry_msgs/PointStamped.h>
 #include <geometry_msgs/Pose.h>
@@ -29,6 +30,8 @@ tf2_ros::TransformListener* tfListener = NULL;
 
 bool debug;
 
+float ANGLE_THRESHOLD = (M_PI / 180.0) * 20.0;
+
 void getDepths(
     std::vector<cv::Vec4f>            circles,
     const cv_bridge::CvImageConstPtr &depth_f,
@@ -36,7 +39,6 @@ void getDepths(
     cv::Mat                           output,
     std_msgs::Header                  depth_header
 ) {
-
   // Get the depth image
   for (size_t i = 0; i < circles.size(); i++) {
     int minX = std::max(cvRound(circles[i][0] - circles[i][2]), 0);
@@ -85,8 +87,10 @@ void getDepths(
 
     float distance = accumulator / count;
 
-    if (distance < 0.1 || distance > 5)
+    if (distance < 0.1 || distance > 1.65) {
+      ROS_DEBUG("Distance outside threshold: %f", distance);
       return;
+    }
 
     pose.color.r /= count;
     pose.color.g /= count;
@@ -101,6 +105,11 @@ void getDepths(
     float kf = 554;
 
     double angle_to_target = atan2(depth_f->image.cols / 2 - circles[i][0], kf);
+    // ROS_INFO("angle to target %f", angle_to_target);
+    if (abs(angle_to_target) > ANGLE_THRESHOLD) {
+      ROS_INFO("Angle too large to detect ring: %f", angle_to_target);
+      return;
+    }
 
     float x_target = distance * cos(angle_to_target);
     float y_target = distance * sin(angle_to_target);
