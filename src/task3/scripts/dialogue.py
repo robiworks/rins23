@@ -25,7 +25,7 @@ class Dialogue:
         rospy.sleep(1)
 
     def handle_dialogue_service(self, req):
-        return FaceDialogueSrvResponse(useful=True, color1="red", color2="blue")
+        return FaceDialogueSrvResponse(useful=True, color1="red", color2="green")
         rospy.loginfo("Dialogue service called.")
         resp = self.dialogue()
         rospy.loginfo("Dialoge service finished.")

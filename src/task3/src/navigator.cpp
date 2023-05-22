@@ -242,24 +242,12 @@ class Navigator {
       task3::ArmExtendSrv extend;
       extend.request.extend = true;
 
-      if (armExtendService->call(extend)) {
-        //task3::CylinderFaceSrv look;
-        //look.request.cylinder_color = cylinder->color_name;
+      currentSearchingState = FSMSearchingState::LOOKING;
+      if(armExtendService->call(extend)) {
+        task3::CylinderFaceSrv look;
+        look.request.cylinder_color = cylinder.color_name;
 
         // Look on top of cylinder
-        currentSearchingState = FSMSearchingState::LOOKING;
-        //if (cylinderFaceService->call(look)) {
-        //  if (look.response.correct_robber) {
-        //    // Found the robber
-        //    ROS_INFO("Robber found, ring color: %s", look.response.ring_color.c_str());
-        //    currentSearchingState = FSMSearchingState::ROBBER_FOUND;
-        //    prisonColor           = look.response.ring_color;
-        //  } else {
-        //    // Didn't find the robber here
-        //    ROS_INFO("Robber not found");
-        //    currentSearchingState = FSMSearchingState::ROBBER_NOT_FOUND;
-        //  }
-        //}
         task3::FineApproachSrv fineApproach;
         fineApproach.request.action = "approach";
         if (fineApproachService->call(fineApproach)) {
@@ -272,6 +260,19 @@ class Navigator {
 
         } else {
           ROS_ERROR("Failed to call fine approach service");
+        }
+
+        if (cylinderFaceService->call(look)) {
+          if (look.response.correct_robber) {
+            // Found the robber
+            ROS_INFO("Robber found, ring color: %s", look.response.ring_color.c_str());
+            currentSearchingState = FSMSearchingState::ROBBER_FOUND;
+            prisonColor           = look.response.ring_color;
+          } else {
+            // Didn't find the robber here
+            ROS_INFO("Robber not found");
+            currentSearchingState = FSMSearchingState::ROBBER_NOT_FOUND;
+          }
         }
         // Move arm back to default position
         fineApproach.request.action = "retreat";
@@ -855,7 +856,7 @@ int main(int argc, char* argv[]) {
     {  1.0724883079528809,  0.5069646239280701,  true},
     {  0.9129006862640381,   2.723724365234375, false},
     {-0.16708868741989136,   2.865935802459717,  true},
-    { -1.2248432636260986,   2.177075147628784, false},
+    { -1.2248432636260986,   2.177075147628784, true},
   };
 
   // Initialize publisher for robot rotation
@@ -870,7 +871,7 @@ int main(int argc, char* argv[]) {
   ros::ServiceClient armExtendService =
       nh.serviceClient<task3::ArmExtendSrv>("/arm_control/extend");
   ros::ServiceClient cylinderFaceService =
-      nh.serviceClient<task3::CylinderFaceSrv>("/cylinder_face");
+      nh.serviceClient<task3::CylinderFaceSrv>("/is_robber");
   ros::ServiceClient fineApproachService =
       nh.serviceClient<task3::FineApproachSrv>("/fine_approach");
 

@@ -336,7 +336,7 @@ class Clustering:
         color = self.color_reverse_lookup(rgb, "ring")
 
         if color == "unknown":
-           return
+            return
 
         idx = list(RINGS_ON_POLYGON.keys()).index(color)
 

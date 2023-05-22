@@ -20,8 +20,6 @@ class FineApproachNode:
         self.service = rospy.Service(
             "/fine_approach", FineApproachSrv, self.fine_approach
         )
-        self.current_image = None
-        self.target_color = None
 
     def image_callback(self, msg):
         try:
@@ -32,21 +30,25 @@ class FineApproachNode:
     def fine_approach(self, req):
         action = req.action
         twist = Twist()
+
         if action == "approach":
-            twist.linear.x = 0.2
-            twist.angular.z = 0.0
             rospy.loginfo("Approaching")
+            for i in range(5):
+                twist.linear.x = 0.05
+                twist.angular.z = 0.0
+                self.cmd_pub.publish(twist)
+                rospy.sleep(0.5)
+
         elif action == "retreat":
-            twist.linear.x -= 0.3
+            twist.linear.x -= 0.4
             twist.angular.z = 0.0
             rospy.loginfo("Retreating")
         else:
             rospy.logerr("Invalid action")
             return FineApproachSrvResponse(success=False)
 
-        self.cmd_pub.publish(twist)
-
         return FineApproachSrvResponse(success=True)
+
 
 if __name__ == "__main__":
     rospy.init_node("fine_approach_node")

@@ -34,6 +34,8 @@ from task3.srv import (
     PosterExplorationSrvResponse,
     FaceDialogueSrv,
     FaceDialogueSrvResponse,
+    CylinderFaceSrv,
+    CylinderFaceSrvResponse,
 )
 
 import easyocr
@@ -51,6 +53,8 @@ RING_INDICATORS = {
     "blue": ["BL", "UE", "LU"],
     "green": ["GR", "EE", "EN", "RE"],
 }
+
+AM_I_IN_SERVICE = False
 
 ### RUN  ###
 # roslaunch task1 combined.launch
@@ -147,6 +151,13 @@ class FaceDescriptors:
         self.faces_with_descriptors.append(fdf)
         return True
 
+    def is_similar(self, fdf: Face) -> bool:
+        for face in self.faces_with_descriptors:
+            norm = self.hellinger_distance(face.descriptor, fdf.descriptor)
+            if norm < FACE_DIFF_THRESHOLD:
+                return True
+        return False
+
 
 class face_localizer:
     def __init__(self):
@@ -173,7 +184,7 @@ class face_localizer:
 
         self.face_descriptors = FaceDescriptors()
         self.poster_descriptors = FaceDescriptors()
-        self.arm_face_descriptors = FaceDescriptors()
+        self.close_poster_descriptors = FaceDescriptors()
 
         ###            ###
         ### PUBLISHERS ###
@@ -226,18 +237,46 @@ class face_localizer:
             self.poster_exploration_callback,
         )
 
-        self.face_dialogue_service = rospy.Service(
-            "/face_dialogue", FaceDialogueSrv, self.face_dialogue_callback
-        )
-
-    def face_dialogue_callback(self, msg):
-        return FaceDialogueSrvResponse(useful=False, color1="blue", color2="green")
+        self.is_robber_service = rospy.Service(
+            "/is_robber", CylinderFaceSrv , self.is_robber_service)
 
     def poster_exploration_callback(self, req):
+        AM_I_IN_SERVICE = True
         prize, ring_color = self.analyze_poster()
         if prize == 0:
             prize, ring_color = self.analyze_poster()
+        AM_I_IN_SERVICE = False
         return PosterExplorationSrvResponse(ring_color=ring_color, prize=prize)
+
+    def is_robber_service(self, req):
+        AM_I_IN_SERVICE = True
+        descriptors = self.detect_faces(camera_path="/arm_camera/rgb/image_raw")
+        if (
+            descriptors is None
+            or len(descriptors) == 0
+            or descriptors == 0
+            or isinstance(descriptors, int)
+        ):
+            rospy.logerr("No faces detected! Moj kurac is returning")
+            AM_I_IN_SERVICE = False
+            return CylinderFaceSrvResponse(correct_robber=False, ring_color="")
+
+        for (
+            face_descriptor,
+            fdf,
+            rgb_image,
+            face_distance,
+            box,
+            depth_time,
+        ) in descriptors:
+            is_robber = self.close_poster_descriptors.is_similar(fdf)
+            if is_robber == True:
+                rospy.loginfo("Robber detected!")
+                AM_I_IN_SERVICE = False
+                return CylinderFaceSrvResponse(correct_robber=True, ring_color="blue")
+
+        AM_I_IN_SERVICE = False
+        return CylinderFaceSrvResponse(correct_robber=False, ring_color="")
 
     def analyze_poster(self):
         prizes = []
@@ -324,22 +363,19 @@ class face_localizer:
             print("[-] Poster analysis failed")
             return 0, ""
 
-        # descriptors = self.detect_faces()
+        descriptors = self.detect_faces()
+        for (
+           face_descriptor,
+           fdf,
+           rgb_image,
+           face_distance,
+           box,
+           depth_time,
+        ) in descriptors:
+            fdf.ring_color = ring
+            self.close_poster_descriptors.add_descriptor(fdf)
+
         return most_common_prize, ring
-        # for (
-        #    face_descriptor,
-        #    fdf,
-        #    rgb_image,
-        #    face_distance,
-        #    box,
-        #    depth_time,
-        # ) in descriptors:
-        #    fdf.poster_content = msg
-        #    if self.poster_descriptors.add_descriptor(fdf):
-        #        print("[+] Poster recognition is done.")
-        #        self.custom_msgs_poster_analyzed.publish(msg)
-        #    else:
-        #        print("[-] Poster already detected.")
 
     def get_pose(self, coords, dist, stamp, return_angle=False):
         k_f = 554
@@ -420,10 +456,10 @@ class face_localizer:
 
         return False
 
-    def detect_faces(self):
+    def detect_faces(self, camera_path="/camera/rgb/image_raw/"):
         descriptors = []
         try:
-            rgb_image_message = rospy.wait_for_message("/camera/rgb/image_raw/", Image)
+            rgb_image_message = rospy.wait_for_message(camera_path, Image)
         except Exception as e:
             print(e)
             return 0
@@ -632,7 +668,8 @@ def main():
     rate = rospy.Rate(5)
     print("Face localizer initialized")
     while not rospy.is_shutdown():
-        face_finder.find_faces()
+        if not AM_I_IN_SERVICE:
+            face_finder.find_faces()
         rate.sleep()
 
     cv2.destroyAllWindows()
