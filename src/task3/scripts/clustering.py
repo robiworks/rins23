@@ -14,18 +14,18 @@ from std_msgs.msg import ColorRGBA
 from geometry_msgs.msg import Vector3
 
 RINGS_ON_POLYGON = {
-    "Green": [0, 255, 0],
-    "Red": [255, 0, 0],
-    "Blue": [0, 0, 255],
-    "Black": [0, 0, 0],
-    "Brown": [175, 50, 0],
+    "green": [0, 255, 0],
+    "red": [255, 0, 0],
+    "blue": [0, 0, 255],
+    "black": [0, 0, 0],
+    "brown": [175, 50, 0],
 }
 
 CYLINDERS_ON_POLYGON = {
-    "Green": [0, 255, 0],
-    "Red": [255, 0, 0],
-    "Blue": [0, 0, 255],
-    "Yellow": [255, 255, 0],
+    "green": [0, 255, 0],
+    "red": [255, 0, 0],
+    "blue": [0, 0, 255],
+    "yellow": [255, 255, 0],
 }
 
 
@@ -334,6 +334,10 @@ class Clustering:
         )
         rgb = np.array([msg.color.r, msg.color.g, msg.color.b])
         color = self.color_reverse_lookup(rgb, "ring")
+
+        if color == "unknown":
+            return
+
         idx = list(RINGS_ON_POLYGON.keys()).index(color)
 
         rpm = self.differnatial_localizers[idx].add_point(x)
@@ -353,20 +357,20 @@ class Clustering:
         def closest_color_ring(rgb):
             # If first value is biggest, then it is red
             if rgb[0] > rgb[1] and rgb[0] > rgb[2]:
-                return "Red"
+                return "red"
             # If second value is biggest, then it is green
             if rgb[1] > rgb[0] and rgb[1] > rgb[2]:
-                return "Green"
+                return "green"
             # If third value is biggest, then it is blue
             if rgb[2] > rgb[0] and rgb[2] > rgb[1]:
-                return "Blue"
+                return "blue"
             # If all values are the same, with 5% tolerance, then it is black
             if (
                 abs(rgb[0] - rgb[1]) < 0.05 * rgb[0]
                 and abs(rgb[0] - rgb[2]) < 0.05 * rgb[0]
             ):
-                return "Black"
-            return "Unknown"  # Idk what here..
+                return "black"
+            return "unknown"  # Idk what here..
 
         def closest_color_cylinder(rgb, color_dict):
             min_distance = float("inf")

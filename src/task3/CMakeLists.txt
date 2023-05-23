@@ -60,6 +60,7 @@ add_service_files(
     ArmParkingSrv.srv
     CylinderFaceSrv.srv
     FaceDialogueSrv.srv
+    FineApproachSrv.srv
 )
 
 generate_messages(

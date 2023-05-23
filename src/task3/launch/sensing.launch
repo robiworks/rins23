@@ -21,4 +21,7 @@
         <param name="cam_info" type="string" value="arm"/>
         <param name="debug" type="bool" value="false"/>
     </node>
+
+    <node pkg="task3" type="fine_approach.py" name="fine_approach" output="screen">
+    </node>
 </launch>
