@@ -112,7 +112,9 @@ class Face:
     def describe(self, descriptor):
         self.descriptor = descriptor
 
-    def add_pose(self, pose):
+    def add_pose(self, pose, is_poster=False):
+        if is_poster:
+            return
         self.poses.append(pose)
         poses_m = [
             np.array([p.position.x, p.position.y, p.position.z]) for p in self.poses
@@ -138,12 +140,12 @@ class FaceDescriptors:
         b = b.flatten()
         return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
 
-    def add_descriptor(self, fdf: Face) -> bool:
+    def add_descriptor(self, fdf: Face, is_poster=False) -> bool:
         # Check if the description is already in the list or something similar
         for face in self.faces_with_descriptors:
             norm = self.hellinger_distance(face.descriptor, fdf.descriptor)
             if norm < FACE_DIFF_THRESHOLD:
-                face.add_pose(fdf.pose)
+                face.add_pose(fdf.pose, is_poster=is_poster)
                 print(f"[-] Face already known, norm: {norm}")
                 return False
             else:
@@ -159,11 +161,17 @@ class FaceDescriptors:
 
     # Only for cylinder face
     def is_similar(self, fdf: Face) -> bool:
+        max_prize = 0
+        search_fdf = None
         for face in self.faces_with_descriptors:
-            norm = self.cosine_distance(face.descriptor, fdf.descriptor)
-            print("NORM", norm)
-            if norm < ROBBER_TRESHOLD:
-                return True, face.ring_color
+            if face.prize > max_prize:
+                max_prize = face.prize
+                search_fdf = face
+
+        norm = self.cosine_distance(search_fdf.descriptor, fdf.descriptor)
+        print("NORM", norm)
+        if norm < ROBBER_TRESHOLD:
+            return True, face.ring_color
         return False, None
 
 
@@ -395,7 +403,8 @@ class face_localizer:
                 depth_time,
             ) in descriptors:
                 fdf.ring_color = ring
-                self.close_poster_descriptors.add_descriptor(fdf)
+                fdf.prize = most_common_prize
+                self.close_poster_descriptors.add_descriptor(fdf, True)
                 return most_common_prize, ring
 
         return most_common_prize, ring
