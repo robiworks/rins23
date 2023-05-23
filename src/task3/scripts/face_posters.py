@@ -43,6 +43,7 @@ import easyocr
 ### PARAMETERS ###
 MARKER_DURATION = 360
 FACE_DIFF_THRESHOLD = 0.5
+ROBBER_TRESHOLD = 0.9
 NUM_POINTS = 8
 RADIUS = 3
 FACE_HEIGHT = 120
@@ -161,7 +162,7 @@ class FaceDescriptors:
         for face in self.faces_with_descriptors:
             norm = self.cosine_distance(face.descriptor, fdf.descriptor)
             print("NORM", norm)
-            if norm < FACE_DIFF_THRESHOLD:
+            if norm < ROBBER_TRESHOLD:
                 return True, face.ring_color
         return False, None
 
@@ -174,7 +175,7 @@ class face_localizer:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.use_gpu = True if torch.cuda.is_available() else False
         self.mtcnn = MTCNN(
-            keep_all=True, device=self.device, post_process=False, margin=5
+            keep_all=True, device=self.device, post_process=False, margin=10
         )
         self.resnet = InceptionResnetV1(pretrained="vggface2").eval().to(self.device)
         self.transform = ToTensor()
@@ -748,11 +749,11 @@ class face_localizer:
 def main():
     face_finder = face_localizer()
 
-    rate = rospy.Rate(5)
+    rate = rospy.Rate(3)
     print("Face localizer initialized")
     while not rospy.is_shutdown():
         if not AM_I_IN_SERVICE:
-           face_finder.find_faces()
+            face_finder.find_faces()
         rate.sleep()
 
     cv2.destroyAllWindows()
