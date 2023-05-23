@@ -132,6 +132,11 @@ class FaceDescriptors:
             np.sum((np.sqrt(np.abs(a)) - np.sqrt(np.abs(b))) ** 2)
         ) / np.sqrt(2)
 
+    def cosine_distance(self, a, b):
+        a = a.flatten()
+        b = b.flatten()
+        return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
+
     def add_descriptor(self, fdf: Face) -> bool:
         # Check if the description is already in the list or something similar
         for face in self.faces_with_descriptors:
@@ -151,13 +156,14 @@ class FaceDescriptors:
         self.faces_with_descriptors.append(fdf)
         return True
 
+    # Only for cylinder face
     def is_similar(self, fdf: Face) -> bool:
         for face in self.faces_with_descriptors:
-            norm = self.hellinger_distance(face.descriptor, fdf.descriptor)
+            norm = self.cosine_distance(face.descriptor, fdf.descriptor)
             print("NORM", norm)
             if norm < FACE_DIFF_THRESHOLD:
-                return True
-        return False
+                return True, face.ring_color
+        return False, None
 
 
 class face_localizer:
@@ -168,7 +174,7 @@ class face_localizer:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.use_gpu = True if torch.cuda.is_available() else False
         self.mtcnn = MTCNN(
-            keep_all=True, device=self.device, post_process=False, margin=20
+            keep_all=True, device=self.device, post_process=False, margin=5
         )
         self.resnet = InceptionResnetV1(pretrained="vggface2").eval().to(self.device)
         self.transform = ToTensor()
@@ -273,7 +279,7 @@ class face_localizer:
                 box,
                 depth_time,
             ) in descriptors:
-                is_robber = self.close_poster_descriptors.is_similar(fdf)
+                is_robber, ring_color = self.close_poster_descriptors.is_similar(fdf)
                 if is_robber == True:
                     rospy.loginfo("Robber detected!")
                     AM_I_IN_SERVICE = False
@@ -369,17 +375,27 @@ class face_localizer:
             print("[-] Poster analysis failed")
             return 0, ""
 
-        descriptors = self.detect_faces()
-        for (
-            face_descriptor,
-            fdf,
-            rgb_image,
-            face_distance,
-            box,
-            depth_time,
-        ) in descriptors:
-            fdf.ring_color = ring
-            self.close_poster_descriptors.add_descriptor(fdf)
+        for i in range(3):
+            descriptors = self.detect_robber(camera_path="/camera/rgb/image_raw/")
+            if (
+                descriptors is None
+                or len(descriptors) == 0
+                or descriptors == 0
+                or isinstance(descriptors, int)
+            ):
+                rospy.logerr("No faces detected!")
+                continue
+            for (
+                face_descriptor,
+                fdf,
+                rgb_image,
+                face_distance,
+                box,
+                depth_time,
+            ) in descriptors:
+                fdf.ring_color = ring
+                self.close_poster_descriptors.add_descriptor(fdf)
+                return most_common_prize, ring
 
         return most_common_prize, ring
 
@@ -506,8 +522,6 @@ class face_localizer:
 
             fdf = Face(box, 0.1, depth_time, None)
             fdf.describe(face_descriptor)
-
-            print("face described")
             if face_descriptor is None:
                 continue
 
