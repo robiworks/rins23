@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from visualization_msgs.msg import Marker, MarkerArray
 from std_msgs.msg import ColorRGBA
 from geometry_msgs.msg import Vector3, PoseWithCovarianceStamped
-from tf.transformations import euler_from_quaternion
+from tf.transformations import euler_from_quaternion, quaternion_from_euler
 
 RINGS_ON_POLYGON = {
     "Green": [0, 255, 0],
@@ -203,6 +203,12 @@ class RingApproachFinder:
 
         (_, _, yaw) = euler_from_quaternion(orientation_list)
         return yaw if yaw > 0 else yaw + np.pi
+
+    def get_approach_orientation(self, ax: float, ay: float, ring: RingPoseMsg):
+        x = ring.pose.position.x - ax
+        y = ring.pose.position.y - ay
+        angle = np.arctan2(y, x)
+        return quaternion_from_euler(0, 0, angle)
 
     def find_approach_point(self, ring: RingPoseMsg):
         map_x, map_y = self.world_to_map(ring.pose.position.x, ring.pose.position.y)
@@ -452,9 +458,20 @@ class Clustering:
 
         (appr_x, appr_y) = self.ring_approach_finder.find_approach_point(msg)
         (appr_x, appr_y) = self.ring_approach_finder.map_to_world(appr_x, appr_y)
+        [qx, qy, qz, qw] = self.ring_approach_finder.get_approach_orientation(
+            appr_x, appr_y, msg
+        )
+
         rpm.pose.position.x = appr_x
         rpm.pose.position.y = appr_y
+
+        rpm.pose.orientation.x = qx
+        rpm.pose.orientation.y = qy
+        rpm.pose.orientation.z = qz
+        rpm.pose.orientation.w = qw
+
         rpm.color_name = color
+
         if is_new:
             self.ring_pub.publish(rpm)
             self.publish_ring_marker(rpm)
