@@ -2,7 +2,6 @@
 #include <cv_bridge/cv_bridge.h>
 #include <geometry_msgs/PointStamped.h>
 #include <geometry_msgs/Pose.h>
-#include <geometry_msgs/PoseWithCovarianceStamped.h>
 #include <message_filters/subscriber.h>
 #include <message_filters/sync_policies/approximate_time.h>
 #include <message_filters/synchronizer.h>
@@ -10,7 +9,6 @@
 #include <ros/ros.h>
 #include <sensor_msgs/Image.h>
 #include <task3/RingPoseMsg.h>
-#include <tf2/LinearMath/Vector3.h>
 #include <tf2/transform_datatypes.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 #include <tf2_ros/transform_listener.h>
@@ -33,7 +31,6 @@ tf2_ros::TransformListener* tfListener = NULL;
 bool debug;
 
 float ANGLE_THRESHOLD = (M_PI / 180.0) * 20.0;
-float DISTANCE_THRESHOLD = 0.4;
 
 void getDepths(
     std::vector<cv::Vec4f>            circles,
@@ -163,53 +160,9 @@ void getDepths(
       ps = tfBuffer->transform(point, "map", ros::Duration(3.0));
       // ROS_INFO("transform: %f %f %f", ps.point.x, ps.point.y, ps.point.z);
 
-      // Get the robot pose
-      geometry_msgs::PoseWithCovarianceStamped::ConstPtr robot_pose_msg =
-          ros::topic::waitForMessage<geometry_msgs::PoseWithCovarianceStamped>("/amcl_pose");
-      geometry_msgs::Pose robot_pose;
-
-      if (robot_pose_msg != nullptr) {
-        robot_pose = robot_pose_msg->pose.pose;
-        ROS_DEBUG(
-            "Robot pose: %f, %f, %f",
-            robot_pose.position.x,
-            robot_pose.position.y,
-            robot_pose.position.z
-        );
-      } else {
-        ROS_WARN("No message received on /amcl_pose");
-        return;
-      }
-
-      tf2::Vector3 robot_pose_vector(
-          robot_pose.position.x,
-          robot_pose.position.y,
-          robot_pose.position.z
-      );
-      tf2::Vector3 point_map_vector(ps.point.x, ps.point.y, ps.point.z);
-      tf2::Vector3 direction_to_ring = point_map_vector - robot_pose_vector;
-
-      // Normalize direction
-      direction_to_ring.normalize();
-
-      tf2::Vector3 robot_front(1, 0, 0);
-      tf2::Vector3 up(0, 0, 1);
-      tf2::Vector3 right = robot_front.cross(up);
-
-      tf2Scalar yaw = atan2(direction_to_ring.getY(), direction_to_ring.getX());
-
-      tf2::Quaternion rotation;
-      rotation.setRPY(0, 0, yaw);
-
-      tf2::Vector3 target_point       = point_map_vector - (direction_to_ring * DISTANCE_THRESHOLD);
-
-      pose_msg.position.x    = target_point.x();
-      pose_msg.position.y    = target_point.y();
-      pose_msg.position.z    = target_point.z();
-      pose_msg.orientation.x = rotation.x();
-      pose_msg.orientation.y = rotation.y();
-      pose_msg.orientation.z = rotation.z();
-      pose_msg.orientation.w = rotation.w();
+      pose_msg.position.x = ps.point.x;
+      pose_msg.position.y = ps.point.y;
+      pose_msg.position.z = ps.point.z;
 
       pose.pose = pose_msg;
 
