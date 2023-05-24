@@ -79,7 +79,13 @@ void cloud_cb(const pcl::PCLPointCloud2ConstPtr &cloud_blob) {
   // Build a passthrough filter to remove spurious NaNs
   pass.setInputCloud(cloud);
   pass.setFilterFieldName("z");
-  pass.setFilterLimits(0, 1.5);
+  pass.setFilterLimits(0.5, 0.9);
+  pass.filter(*cloud_filtered);
+  pass.setFilterFieldName("x");
+  pass.setFilterLimits(-0.5, 0.5);
+  pass.filter(*cloud_filtered);
+  pass.setFilterFieldName("y");
+  pass.setFilterLimits(-0.5, 0.5);
   pass.filter(*cloud_filtered);
 
   // Estimate point normals
@@ -168,7 +174,7 @@ void cloud_cb(const pcl::PCLPointCloud2ConstPtr &cloud_blob) {
     double real_z = centroid[2];
 
     // Safety margin - this is the distance by which you want to virtually "bring closer" the cylinder.
-    double safety_margin = 0.3;
+    double safety_margin = 0.4;
 
     // Calculate the direction vector from the robot to the cylinder (assuming robot is at (0, 0, 0))
     double direction_x = real_x / std::sqrt(real_x * real_x + real_y * real_y + real_z * real_z);

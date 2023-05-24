@@ -34,6 +34,8 @@ from task3.srv import (
     PosterExplorationSrvResponse,
     FaceDialogueSrv,
     FaceDialogueSrvResponse,
+    CylinderFaceSrv,
+    CylinderFaceSrvResponse,
 )
 
 import easyocr
@@ -41,6 +43,7 @@ import easyocr
 ### PARAMETERS ###
 MARKER_DURATION = 360
 FACE_DIFF_THRESHOLD = 0.5
+ROBBER_TRESHOLD = 0.9
 NUM_POINTS = 8
 RADIUS = 3
 FACE_HEIGHT = 120
@@ -51,6 +54,8 @@ RING_INDICATORS = {
     "blue": ["BL", "UE", "LU"],
     "green": ["GR", "EE", "EN", "RE"],
 }
+
+AM_I_IN_SERVICE = False
 
 ### RUN  ###
 # roslaunch task1 combined.launch
@@ -107,7 +112,9 @@ class Face:
     def describe(self, descriptor):
         self.descriptor = descriptor
 
-    def add_pose(self, pose):
+    def add_pose(self, pose, is_poster=False):
+        if is_poster:
+            return
         self.poses.append(pose)
         poses_m = [
             np.array([p.position.x, p.position.y, p.position.z]) for p in self.poses
@@ -128,12 +135,17 @@ class FaceDescriptors:
             np.sum((np.sqrt(np.abs(a)) - np.sqrt(np.abs(b))) ** 2)
         ) / np.sqrt(2)
 
-    def add_descriptor(self, fdf: Face) -> bool:
+    def cosine_distance(self, a, b):
+        a = a.flatten()
+        b = b.flatten()
+        return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
+
+    def add_descriptor(self, fdf: Face, is_poster=False) -> bool:
         # Check if the description is already in the list or something similar
         for face in self.faces_with_descriptors:
             norm = self.hellinger_distance(face.descriptor, fdf.descriptor)
             if norm < FACE_DIFF_THRESHOLD:
-                face.add_pose(fdf.pose)
+                face.add_pose(fdf.pose, is_poster=is_poster)
                 print(f"[-] Face already known, norm: {norm}")
                 return False
             else:
@@ -147,6 +159,21 @@ class FaceDescriptors:
         self.faces_with_descriptors.append(fdf)
         return True
 
+    # Only for cylinder face
+    def is_similar(self, fdf: Face) -> bool:
+        max_prize = 0
+        search_fdf = None
+        for face in self.faces_with_descriptors:
+            if face.prize > max_prize:
+                max_prize = face.prize
+                search_fdf = face
+
+        norm = self.cosine_distance(search_fdf.descriptor, fdf.descriptor)
+        print("NORM", norm)
+        if norm < ROBBER_TRESHOLD:
+            return True, face.ring_color
+        return False, None
+
 
 class face_localizer:
     def __init__(self):
@@ -156,7 +183,7 @@ class face_localizer:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.use_gpu = True if torch.cuda.is_available() else False
         self.mtcnn = MTCNN(
-            keep_all=True, device=self.device, post_process=False, margin=20
+            keep_all=True, device=self.device, post_process=False, margin=10
         )
         self.resnet = InceptionResnetV1(pretrained="vggface2").eval().to(self.device)
         self.transform = ToTensor()
@@ -173,7 +200,7 @@ class face_localizer:
 
         self.face_descriptors = FaceDescriptors()
         self.poster_descriptors = FaceDescriptors()
-        self.arm_face_descriptors = FaceDescriptors()
+        self.close_poster_descriptors = FaceDescriptors()
 
         ###            ###
         ### PUBLISHERS ###
@@ -226,18 +253,51 @@ class face_localizer:
             self.poster_exploration_callback,
         )
 
-        self.face_dialogue_service = rospy.Service(
-            "/face_dialogue", FaceDialogueSrv, self.face_dialogue_callback
+        self.is_robber_service = rospy.Service(
+            "/is_robber", CylinderFaceSrv, self.is_robber_service
         )
 
-    def face_dialogue_callback(self, msg):
-        return FaceDialogueSrvResponse(useful=False, color1="blue", color2="green")
-
     def poster_exploration_callback(self, req):
+        AM_I_IN_SERVICE = True
         prize, ring_color = self.analyze_poster()
         if prize == 0:
             prize, ring_color = self.analyze_poster()
+        AM_I_IN_SERVICE = False
         return PosterExplorationSrvResponse(ring_color=ring_color, prize=prize)
+
+    def is_robber_service(self, req):
+        AM_I_IN_SERVICE = True
+
+        for i in range(3):
+            descriptors = self.detect_robber()
+            rospy.sleep(0.1)
+            if (
+                descriptors is None
+                or len(descriptors) == 0
+                or descriptors == 0
+                or isinstance(descriptors, int)
+            ):
+                rospy.loginfo("No faces detected!")
+                continue
+
+            for (
+                face_descriptor,
+                fdf,
+                rgb_image,
+                face_distance,
+                box,
+                depth_time,
+            ) in descriptors:
+                is_robber, ring_color = self.close_poster_descriptors.is_similar(fdf)
+                if is_robber == True:
+                    rospy.loginfo("Robber detected!")
+                    AM_I_IN_SERVICE = False
+                    return CylinderFaceSrvResponse(
+                        correct_robber=True, ring_color="blue"
+                    )
+
+        AM_I_IN_SERVICE = False
+        return CylinderFaceSrvResponse(correct_robber=False, ring_color="")
 
     def analyze_poster(self):
         prizes = []
@@ -324,22 +384,30 @@ class face_localizer:
             print("[-] Poster analysis failed")
             return 0, ""
 
-        # descriptors = self.detect_faces()
+        for i in range(3):
+            descriptors = self.detect_robber(camera_path="/camera/rgb/image_raw/")
+            if (
+                descriptors is None
+                or len(descriptors) == 0
+                or descriptors == 0
+                or isinstance(descriptors, int)
+            ):
+                rospy.logerr("No faces detected!")
+                continue
+            for (
+                face_descriptor,
+                fdf,
+                rgb_image,
+                face_distance,
+                box,
+                depth_time,
+            ) in descriptors:
+                fdf.ring_color = ring
+                fdf.prize = most_common_prize
+                self.close_poster_descriptors.add_descriptor(fdf, True)
+                return most_common_prize, ring
+
         return most_common_prize, ring
-        # for (
-        #    face_descriptor,
-        #    fdf,
-        #    rgb_image,
-        #    face_distance,
-        #    box,
-        #    depth_time,
-        # ) in descriptors:
-        #    fdf.poster_content = msg
-        #    if self.poster_descriptors.add_descriptor(fdf):
-        #        print("[+] Poster recognition is done.")
-        #        self.custom_msgs_poster_analyzed.publish(msg)
-        #    else:
-        #        print("[-] Poster already detected.")
 
     def get_pose(self, coords, dist, stamp, return_angle=False):
         k_f = 554
@@ -420,18 +488,80 @@ class face_localizer:
 
         return False
 
-    def detect_faces(self):
+    def detect_robber(self, camera_path="/arm_camera/rgb/image_raw/"):
         descriptors = []
         try:
-            rgb_image_message = rospy.wait_for_message("/camera/rgb/image_raw/", Image)
+            rgb_image_message = rospy.wait_for_message(camera_path, Image)
         except Exception as e:
             print(e)
             return 0
 
         try:
-            depth_image_message = rospy.wait_for_message(
-                "/camera/depth/image_raw/", Image
+            rgb_image = self.bridge.imgmsg_to_cv2(rgb_image_message, "bgr8")
+        except CvBridgeError as e:
+            print(e)
+
+        self.dims = rgb_image.shape
+        rgb_image = cv2.cvtColor(rgb_image, cv2.COLOR_BGR2RGB)
+        rgb_image = PILImage.fromarray(rgb_image)
+
+        # Detect faces and extract descriptors
+        with torch.no_grad():
+            faces_cropped = self.mtcnn(rgb_image, save_path=None)
+            # Get the bounding boxes
+            batch_boxes, _ = self.mtcnn.detect(rgb_image, landmarks=False)
+
+        print("FACES CROPPED", faces_cropped)
+
+        if faces_cropped is None or batch_boxes is None:
+            return
+
+        print("FACES CROPPED", faces_cropped)
+
+        for face, box in zip(faces_cropped, batch_boxes):
+            x1, y1, x2, y2 = box
+            x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
+            # Get the pose of the face
+            depth_time = rgb_image_message.header.stamp
+
+            print("depth time", depth_time)
+
+            face_descriptor = (
+                self.resnet(face.to(self.device).unsqueeze(0)).cpu().detach().numpy()
             )
+
+            fdf = Face(box, 0.1, depth_time, None)
+            fdf.describe(face_descriptor)
+            if face_descriptor is None:
+                continue
+
+            if fdf is None:
+                continue
+
+            if box is None:
+                continue
+
+            if depth_time is None:
+                continue
+
+            descriptors.append((face_descriptor, fdf, rgb_image, 0.1, box, depth_time))
+
+        return descriptors
+
+    def detect_faces(
+        self,
+        camera_path="/camera/rgb/image_raw/",
+        depth_path="/camera/depth/image_raw/",
+    ):
+        descriptors = []
+        try:
+            rgb_image_message = rospy.wait_for_message(camera_path, Image)
+        except Exception as e:
+            print(e)
+            return 0
+
+        try:
+            depth_image_message = rospy.wait_for_message(depth_path, Image)
         except Exception as e:
             print(e)
             return 0
@@ -456,7 +586,6 @@ class face_localizer:
 
         # Convert image to rgb
         rgb_image = cv2.cvtColor(hsv_image, cv2.COLOR_HSV2RGB)
-
         rgb_image = PILImage.fromarray(rgb_image)
 
         # Detect faces and extract descriptors
@@ -629,10 +758,11 @@ class face_localizer:
 def main():
     face_finder = face_localizer()
 
-    rate = rospy.Rate(5)
+    rate = rospy.Rate(3)
     print("Face localizer initialized")
     while not rospy.is_shutdown():
-        face_finder.find_faces()
+        if not AM_I_IN_SERVICE:
+            face_finder.find_faces()
         rate.sleep()
 
     cv2.destroyAllWindows()
