@@ -6,6 +6,7 @@
 #include <cmath>
 #include <geometry_msgs/TransformStamped.h>
 #include <geometry_msgs/Twist.h>
+#include <geometry_msgs/PoseWithCovarianceStamped.h>
 #include <move_base_msgs/MoveBaseAction.h>
 #include <nav_msgs/GetMap.h>
 #include <opencv2/core/core.hpp>
@@ -148,6 +149,13 @@ class Navigator {
     // Navigate through a list (vector) of points
     void navigateList(vector<NavigatorPoint> points) {
       ROS_INFO("-------- Starting EXPLORING phase");
+
+
+      // Retract arm
+      task3::ArmExtendSrv srv;
+      srv.request.extend = false;
+      armExtendService->call(srv);
+
 
       int len = points.size();
       for (int i = 0; i < len; i++) {
@@ -333,7 +341,9 @@ class Navigator {
 
         // Wait for parking position callback to fire
         // Parking execution is moved into that callback
-        spin(180.0, 0.5);
+        // spin(180.0, 0.5);
+        task3::RingPoseMsgConstPtr item = ros::topic::waitForMessage<task3::RingPoseMsg>("arm_control/parking_point");
+        parkingPointCallback(item);
       } else {
         ROS_ERROR("Failed to call arm extend service");
       }
@@ -545,14 +555,27 @@ class Navigator {
 
     // PARKING POINT DETECTION
     // Callback to handle /arm_control/parking_point
-    void parkingPointCallback(geometry_msgs::Pose pose) {
+    void parkingPointCallback(const task3::RingPoseMsgConstPtr &pose) {
       if (currentMainState == FSMMainState::PARKING &&
           currentParkingState == FSMParkingState::FINDING_SPOT) {
-        ROS_INFO("Received parking point: (x: %f, y: %f)", pose.position.x, pose.position.y);
+        ROS_INFO("Received parking point: (x: %f, y: %f)", pose->pose.position.x, pose->pose.position.y);
 
         // Park into spot
         currentParkingState = FSMParkingState::MANEUVERING;
-        approachPoint(pose);
+        // approachPoint(pose->pose);
+
+        // Use twist to approach the parking spot
+        geometry_msgs::PoseWithCovarianceStampedConstPtr currentPose = ros::topic::waitForMessage<geometry_msgs::PoseWithCovarianceStamped>("/amcl_pose");
+
+        // distance to pose
+        double dx = pose->pose.position.x - currentPose->pose.pose.position.x;
+        double dy = pose->pose.position.y - currentPose->pose.pose.position.y;
+        double distance = sqrt(dx * dx + dy * dy);
+
+        geometry_msgs::Twist twist;
+        twist.linear.x = distance;
+        twist.angular.z = 0.0;
+        cmdvelPublisher->publish(twist);
 
         // Parking should be finished at this point
         currentParkingState = FSMParkingState::FINISHED;

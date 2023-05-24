@@ -3,6 +3,7 @@
 import rospy
 import numpy as np
 import time
+import os
 
 from sklearn.cluster import DBSCAN
 from task2.msg import RingPoseMsg, ColorMsg
@@ -11,7 +12,8 @@ from typing import List
 from dataclasses import dataclass
 from visualization_msgs.msg import Marker, MarkerArray
 from std_msgs.msg import ColorRGBA
-from geometry_msgs.msg import Vector3
+from geometry_msgs.msg import Vector3, PoseWithCovarianceStamped
+from tf.transformations import euler_from_quaternion, quaternion_from_euler
 
 RINGS_ON_POLYGON = {
     "green": [0, 255, 0],
@@ -161,6 +163,116 @@ class DBSCANClustering:
         return rpm
 
 
+class RingApproachFinder:
+    def __init__(self, approach_distance: float = 0.6):
+        self.resolution = 0.05000000074505806
+        self.origin_x = -12.2
+        self.origin_y = -12.2
+
+        self.THRESHOLD = int(approach_distance / self.resolution)
+
+        def read_costmap():
+            current_directory = os.path.dirname(os.path.abspath(__file__))
+            fpath = os.path.join(current_directory, "costmap.txt")
+
+            with open(fpath, "r") as f:
+                content = f.read()
+                content = content.replace("[", "").replace("]", "")
+                int_list = [int(num) for num in content.split(",")]
+                return np.reshape(int_list, (480, 480))
+
+        self.costmap = read_costmap()
+
+    def world_to_map(self, x: float, y: float):
+        map_x = int((x - self.origin_x) / self.resolution)
+        map_y = int((y - self.origin_y) / self.resolution)
+        return map_x, map_y
+
+    def map_to_world(self, gx: int, gy: int):
+        x = self.origin_x + gx * self.resolution
+        y = self.origin_y + gy * self.resolution
+        return (x, y)
+
+    def get_current_orientation(self):
+        msg = rospy.wait_for_message("/amcl_pose", PoseWithCovarianceStamped)
+        orientation_q = msg.pose.pose.orientation
+        orientation_list = [
+            orientation_q.x,
+            orientation_q.y,
+            orientation_q.z,
+            orientation_q.w,
+        ]
+
+        (_, _, yaw) = euler_from_quaternion(orientation_list)
+        return yaw if yaw > 0 else yaw + np.pi
+
+    def get_approach_orientation(self, ax: float, ay: float, ring: RingPoseMsg):
+        x = ring.pose.position.x - ax
+        y = ring.pose.position.y - ay
+        angle = np.arctan2(y, x)
+        return quaternion_from_euler(0, 0, angle)
+
+    def find_approach_point(self, ring: RingPoseMsg):
+        map_x, map_y = self.world_to_map(ring.pose.position.x, ring.pose.position.y)
+        orientation = self.get_current_orientation()
+
+        if orientation <= np.pi / 4 or orientation >= (3 / 4) * np.pi:
+            # Looking along x- or x+ axis, priority check in perpendicular directions (so y)
+            if (
+                map_y + self.THRESHOLD < 480
+                and self.costmap[map_y + self.THRESHOLD, map_x] == 0
+            ):
+                print("Found ring approach position on the y+")
+                return (map_x, map_y + self.THRESHOLD)
+            elif (
+                map_y - self.THRESHOLD < 480
+                and self.costmap[map_y - self.THRESHOLD, map_x] == 0
+            ):
+                print("Found ring approach position on the y-")
+                return (map_x, map_y - self.THRESHOLD)
+            elif (
+                map_x + self.THRESHOLD < 480
+                and self.costmap[map_y, map_x + self.THRESHOLD] == 0
+            ):
+                print("Found ring approach position on the x+")
+                return (map_x + self.THRESHOLD, map_y)
+            elif (
+                map_x - self.THRESHOLD < 480
+                and self.costmap[map_y, map_x - self.THRESHOLD] == 0
+            ):
+                print("Found ring approach position on the x-")
+                return (map_x - self.THRESHOLD, map_y)
+        else:
+            # Looking along y- or y+ axis, priority check in perpendicular directions (so x)
+            if (
+                map_x + self.THRESHOLD < 480
+                and self.costmap[map_y, map_x + self.THRESHOLD] == 0
+            ):
+                print("Found ring approach position on the x+")
+                return (map_x + self.THRESHOLD, map_y)
+            elif (
+                map_x - self.THRESHOLD < 480
+                and self.costmap[map_y, map_x - self.THRESHOLD] == 0
+            ):
+                print("Found ring approach position on the x-")
+                return (map_x - self.THRESHOLD, map_y)
+            elif (
+                map_y + self.THRESHOLD < 480
+                and self.costmap[map_y + self.THRESHOLD, map_x] == 0
+            ):
+                print("Found ring approach position on the y+")
+                return (map_x, map_y + self.THRESHOLD)
+            elif (
+                map_y - self.THRESHOLD < 480
+                and self.costmap[map_y - self.THRESHOLD, map_x] == 0
+            ):
+                print("Found ring approach position on the y-")
+                return (map_x, map_y - self.THRESHOLD)
+
+        print("Couldn't find ring approach position")
+        return (ring.pose.position.x, ring.pose.position.y)
+
+
 class Clustering:
     def __init__(self):
         rospy.init_node("ring_localizer", anonymous=True)
@@ -236,6 +348,9 @@ class Clustering:
         self.cylinder_holder = RingHolder()
 
         self.marker_duration = rospy.Duration.from_sec(3600)
+
+        # Setup ring approach finder
+        self.ring_approach_finder = RingApproachFinder()
 
     def publish_cylinder_marker(self, cylinder: RingPoseMsg):
         self.cylinder_marker_id += 1
@@ -347,7 +462,22 @@ class Clustering:
 
         is_new = self.ring_holder.update_ring(rpm, color)
 
+        (appr_x, appr_y) = self.ring_approach_finder.find_approach_point(msg)
+        (appr_x, appr_y) = self.ring_approach_finder.map_to_world(appr_x, appr_y)
+        [qx, qy, qz, qw] = self.ring_approach_finder.get_approach_orientation(
+            appr_x, appr_y, msg
+        )
+
+        rpm.pose.position.x = appr_x
+        rpm.pose.position.y = appr_y
+
+        rpm.pose.orientation.x = qx
+        rpm.pose.orientation.y = qy
+        rpm.pose.orientation.z = qz
+        rpm.pose.orientation.w = qw
+
         rpm.color_name = color
+
         if is_new:
             self.ring_pub.publish(rpm)
             self.publish_ring_marker(rpm)
