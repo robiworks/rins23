@@ -55,9 +55,9 @@ void moveArmDefault() {
   trajectory.joint_names.push_back("arm_wrist_flex_joint");
 
   point.positions.push_back(0);
-  point.positions.push_back(0);
-  point.positions.push_back(0);
-  point.positions.push_back(0);
+  point.positions.push_back(-1.5);
+  point.positions.push_back(1.5);
+  point.positions.push_back(1.5);
 
   point.time_from_start = ros::Duration(1.0);
 
@@ -273,7 +273,7 @@ void getDepths(
 
         pose.pose = pose_msg;
 
-        ground_ring_pub.publish(pose.pose);
+        ground_ring_pub.publish(pose);
         final_pose = pose.pose;
 
         search = false;
@@ -434,7 +434,7 @@ int main(int argc, char** argv) {
 
   marker_pub = nh.advertise<visualization_msgs::MarkerArray>("ground_ring_marker", 10000);
 
-  ground_ring_pub = nh.advertise<geometry_msgs::Pose>("/arm_control/parking_point", 1000);
+  ground_ring_pub = nh.advertise<task3::RingPoseMsg>("/arm_control/parking_point", 1000);
 
   Subscriber<Image> rgb_sub(nh, rgb_topic, 1);
   Subscriber<Image> depth_sub(nh, depth_topic, 1);
