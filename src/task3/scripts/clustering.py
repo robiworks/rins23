@@ -3,6 +3,7 @@
 import rospy
 import numpy as np
 import time
+import os
 
 from sklearn.cluster import DBSCAN
 from task2.msg import RingPoseMsg, ColorMsg
@@ -171,7 +172,8 @@ class RingApproachFinder:
         self.THRESHOLD = int(approach_distance / self.resolution)
 
         def read_costmap():
-            fpath = "./costmap.txt"
+            current_directory = os.path.dirname(os.path.abspath(__file__))
+            fpath = os.path.join(current_directory, "costmap.txt")
 
             with open(fpath, "r") as f:
                 content = f.read()
