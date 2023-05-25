@@ -24,4 +24,7 @@
 
     <node pkg="task3" type="fine_approach.py" name="fine_approach" output="screen">
     </node>
+
+    <node pkg="task3" type="fine_parking.py" name="fine_parking" output="screen">
+    </node>
 </launch>

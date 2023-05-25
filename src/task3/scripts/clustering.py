@@ -350,7 +350,7 @@ class Clustering:
         self.marker_duration = rospy.Duration.from_sec(3600)
 
         # Setup ring approach finder
-        self.ring_approach_finder = RingApproachFinder()
+        self.ring_approach_finder = RingApproachFinder(0.7)
 
     def publish_cylinder_marker(self, cylinder: RingPoseMsg):
         self.cylinder_marker_id += 1
