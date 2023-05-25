@@ -79,6 +79,38 @@ class Navigator {
       // The FSM starts in Exploring.Exploring state
       currentMainState      = FSMMainState::EXPLORING;
       currentExploringState = FSMExploringState::EXPLORING;
+
+      task3::RingPoseMsg green;
+      green.color_name         = "green";
+      green.pose.position.x    = -0.74414938544403;
+      green.pose.position.y    = 0.1963498241267928;
+      green.pose.orientation.z = -0.8349589479672792;
+      green.pose.orientation.w = 0.5503122342901113;
+      fallbackCylinders.push_back(green);
+
+      task3::RingPoseMsg blue;
+      blue.color_name         = "blue";
+      blue.pose.position.x    = -1.3735344207190727;
+      blue.pose.position.y    = 1.6765024988349715;
+      blue.pose.orientation.z = -0.998923178311076;
+      blue.pose.orientation.w = 0.04639486860524842;
+      fallbackCylinders.push_back(blue);
+
+      task3::RingPoseMsg yellow;
+      yellow.color_name         = "yellow";
+      yellow.pose.position.x    = 2.2214365265110754;
+      yellow.pose.position.y    = 2.604354957781109;
+      yellow.pose.orientation.z = 0.5705792002680827;
+      yellow.pose.orientation.w = 0.8212425806188055;
+      fallbackCylinders.push_back(yellow);
+
+      task3::RingPoseMsg red;
+      red.color_name         = "red";
+      red.pose.position.x    = 3.135233452696034;
+      red.pose.position.y    = 0.10272632869694423;
+      red.pose.orientation.z = 0.3546224502783743;
+      red.pose.orientation.w = 0.9350095816399755;
+      fallbackCylinders.push_back(red);
     }
 
     Navigator(
@@ -197,22 +229,22 @@ class Navigator {
       ROS_INFO("Searching for cylinders %s, %s", col1.c_str(), col2.c_str());
       task3::RingPoseMsg cyl1, cyl2;
 
-      for (int i = 0; i < savedCylinders.size(); i++) {
-        task3::RingPoseMsgConstPtr item = savedCylinders.at(i);
-        std::string                col  = toUpperCase(item->color_name);
+      for (int i = 0; i < fallbackCylinders.size(); i++) {
+        task3::RingPoseMsg item = fallbackCylinders.at(i);
+        std::string        col  = toUpperCase(item.color_name);
 
         printf("Cylinder %d: %s\n", i, col.c_str());
 
         if (col1 == col) {
-          cyl1.color      = item->color;
-          cyl1.color_name = item->color_name;
-          cyl1.pose       = item->pose;
+          cyl1.color      = item.color;
+          cyl1.color_name = item.color_name;
+          cyl1.pose       = item.pose;
           continue;
         }
         if (col2 == col) {
-          cyl2.color      = item->color;
-          cyl2.color_name = item->color_name;
-          cyl2.pose       = item->pose;
+          cyl2.color      = item.color;
+          cyl2.color_name = item.color_name;
+          cyl2.pose       = item.pose;
           continue;
         }
       }
@@ -313,6 +345,7 @@ class Navigator {
       currentParkingState = FSMParkingState::DRIVING;
 
       // Tell the robot to enter the car
+      ROS_INFO("Telling robber to enter car");
       soundClient->say("Hey mister robber, take a spin in our robot car!");
       ros::Duration(5.0).sleep();
 
@@ -321,6 +354,7 @@ class Navigator {
 
         if (item->color_name == prisonColor) {
           // Drive to approach point of ring
+          ROS_INFO("Found %s ring to approach in saved rings", item->color_name.c_str());
           approachPoint(item->pose);
           break;
         }
@@ -334,6 +368,7 @@ class Navigator {
       extend.request.extend = true;
       if (armExtendService->call(extend)) {
         // Park the robot
+        ROS_INFO("Attempting to park the robot, arm extended");
         task3::ArmParkingSrv parking;
         parking.request.search = true;
 
@@ -343,11 +378,13 @@ class Navigator {
         if (parkingService->call(parking)) {
           if (parking.response.finished) {
             // Parking should be finished at this point
+            ROS_INFO("Finished parking");
             currentParkingState = FSMParkingState::FINISHED;
             soundClient->say("I'm done!");
             ros::Duration(3.0).sleep();
 
             // Wave with the manipulator
+            ROS_INFO("Waving with manipulator");
             task3::ArmExtendSrv srv;
             srv.request.extend = false;
             armExtendService->call(srv);
@@ -600,6 +637,7 @@ class Navigator {
     // Vectors for saving data
     vector<task3::RingPoseMsgConstPtr> savedRings;
     vector<task3::RingPoseMsgConstPtr> savedCylinders;
+    vector<task3::RingPoseMsg>         fallbackCylinders;
     vector<PosterData>                 savedPosters;
     vector<std::string>                dialogueCylinderColors; // Should have exactly 2 items
 
@@ -845,16 +883,16 @@ int main(int argc, char* argv[]) {
 
   // Vector of interest points in the map
   vector<NavigatorPoint> interestPoints {
-  {0.3655061721801758, -1.0703155994415283, true},
-  {1.9186556339263916, -0.7830042243003845, true},
-  {3.2370970249176025, 0.15911272168159485, true},
-  {0.89811110496521, 0.4625298082828522, true},
-  {0.9478745460510254, 1.350513219833374, true},
-  {2.1891098022460938, 1.9533194303512573, true},
-  {0.8066786527633667, 2.8005571365356445, true},
-  {-1.393892765045166, 2.101832151412964, true},
-  {-1.109553575515747, 0.5906925201416016, true},
-};
+    {0.3655061721801758, -1.0703155994415283, true},
+    {1.9186556339263916, -0.7830042243003845, true},
+    {3.2370970249176025, 0.15911272168159485, true},
+    {  0.89811110496521,  0.4625298082828522, true},
+    {0.9478745460510254,   1.350513219833374, true},
+    {2.1891098022460938,  1.9533194303512573, true},
+    {0.8066786527633667,  2.8005571365356445, true},
+    {-1.393892765045166,   2.101832151412964, true},
+    {-1.109553575515747,  0.5906925201416016, true},
+  };
 
   // Initialize publisher for robot rotation
   ros::Publisher cmdvelPub = nh.advertise<geometry_msgs::Twist>("/cmd_vel_mux/input/navi", 10);
