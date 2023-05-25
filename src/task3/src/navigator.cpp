@@ -4,9 +4,9 @@
 #include <actionlib/client/simple_client_goal_state.h>
 #include <algorithm>
 #include <cmath>
+#include <geometry_msgs/PoseWithCovarianceStamped.h>
 #include <geometry_msgs/TransformStamped.h>
 #include <geometry_msgs/Twist.h>
-#include <geometry_msgs/PoseWithCovarianceStamped.h>
 #include <move_base_msgs/MoveBaseAction.h>
 #include <nav_msgs/GetMap.h>
 #include <opencv2/core/core.hpp>
@@ -17,6 +17,7 @@
 #include <stdlib.h>
 #include <string>
 #include <task3/ArmExtendSrv.h>
+#include <task3/ArmParkingSrv.h>
 #include <task3/CylinderFaceSrv.h>
 #include <task3/FaceDialogueSrv.h>
 #include <task3/FacePositionMsg.h>
@@ -86,8 +87,8 @@ class Navigator {
         ros::ServiceClient* faceDialogueSrv,
         ros::ServiceClient* armExtendSrv,
         ros::ServiceClient* cylinderFaceSrv,
-        ros::Publisher*     parkingPub,
-        ros::ServiceClient* fineApproachSrv
+        ros::ServiceClient* fineApproachSrv,
+        ros::ServiceClient* parkingSrv
     )
         : Navigator() {
       cmdvelPublisher          = cmdvelPub;
@@ -95,8 +96,8 @@ class Navigator {
       faceDialogueService      = faceDialogueSrv;
       armExtendService         = armExtendSrv;
       cylinderFaceService      = cylinderFaceSrv;
-      parkingPublisher         = parkingPub;
       fineApproachService      = fineApproachSrv;
+      parkingService           = parkingSrv;
     }
 
     /* --------------------------------------------------------------------- */
@@ -150,12 +151,10 @@ class Navigator {
     void navigateList(vector<NavigatorPoint> points) {
       ROS_INFO("-------- Starting EXPLORING phase");
 
-
       // Retract arm
       task3::ArmExtendSrv srv;
       srv.request.extend = false;
       armExtendService->call(srv);
-
 
       int len = points.size();
       for (int i = 0; i < len; i++) {
@@ -334,16 +333,34 @@ class Navigator {
       task3::ArmExtendSrv extend;
       extend.request.extend = true;
       if (armExtendService->call(extend)) {
-        // Publish "request" to find parking spot
-        std_msgs::Bool parking;
-        parking.data = true;
-        parkingPublisher->publish(parking);
+        // Park the robot
+        task3::ArmParkingSrv parking;
+        parking.request.search = true;
 
-        // Wait for parking position callback to fire
-        // Parking execution is moved into that callback
-        // spin(180.0, 0.5);
-        task3::RingPoseMsgConstPtr item = ros::topic::waitForMessage<task3::RingPoseMsg>("arm_control/parking_point");
-        parkingPointCallback(item);
+        // Park into spot
+        currentParkingState = FSMParkingState::MANEUVERING;
+
+        if (parkingService->call(parking)) {
+          if (parking.response.finished) {
+            // Parking should be finished at this point
+            currentParkingState = FSMParkingState::FINISHED;
+            soundClient->say("I'm done!");
+            ros::Duration(3.0).sleep();
+
+            // Wave with the manipulator
+            task3::ArmExtendSrv srv;
+            srv.request.extend = false;
+            armExtendService->call(srv);
+            srv.request.extend = true;
+            armExtendService->call(srv);
+
+            // Move to END state
+            currentMainState = FSMMainState::END;
+            ROS_INFO("-------- Transitioned to END phase");
+          }
+        } else {
+          ROS_ERROR("Failed to call fine parking service");
+        }
       } else {
         ROS_ERROR("Failed to call arm extend service");
       }
@@ -553,50 +570,6 @@ class Navigator {
       }
     }
 
-    // PARKING POINT DETECTION
-    // Callback to handle /arm_control/parking_point
-    void parkingPointCallback(const task3::RingPoseMsgConstPtr &pose) {
-      if (currentMainState == FSMMainState::PARKING &&
-          currentParkingState == FSMParkingState::FINDING_SPOT) {
-        ROS_INFO("Received parking point: (x: %f, y: %f)", pose->pose.position.x, pose->pose.position.y);
-
-        // Park into spot
-        currentParkingState = FSMParkingState::MANEUVERING;
-        // approachPoint(pose->pose);
-
-        // Use twist to approach the parking spot
-        geometry_msgs::PoseWithCovarianceStampedConstPtr currentPose = ros::topic::waitForMessage<geometry_msgs::PoseWithCovarianceStamped>("/amcl_pose");
-
-        // distance to pose
-        double dx = pose->pose.position.x - currentPose->pose.pose.position.x;
-        double dy = pose->pose.position.y - currentPose->pose.pose.position.y;
-        double distance = sqrt(dx * dx + dy * dy);
-
-        geometry_msgs::Twist twist;
-        twist.linear.x = distance;
-        twist.angular.z = 0.0;
-        cmdvelPublisher->publish(twist);
-
-        // Parking should be finished at this point
-        currentParkingState = FSMParkingState::FINISHED;
-        soundClient->say("I'm done!");
-        ros::Duration(3.0).sleep();
-
-        // Wave with the manipulator
-        task3::ArmExtendSrv srv;
-        srv.request.extend = false;
-        armExtendService->call(srv);
-        srv.request.extend = true;
-        armExtendService->call(srv);
-
-        // Move to END state
-        currentMainState = FSMMainState::END;
-        ROS_INFO("-------- Transitioned to END phase");
-      } else {
-        warnInvalidState("Cannot process parking point detection outside Parking.FindingSpot!");
-      }
-    }
-
   private:
     // Navigation client
     MoveBaseClient*          client;
@@ -605,7 +578,6 @@ class Navigator {
 
     // Publishers
     ros::Publisher* cmdvelPublisher;
-    ros::Publisher* parkingPublisher;
 
     // Services
     ros::ServiceClient* posterExplorationService;
@@ -613,6 +585,7 @@ class Navigator {
     ros::ServiceClient* armExtendService;
     ros::ServiceClient* cylinderFaceService;
     ros::ServiceClient* fineApproachService;
+    ros::ServiceClient* parkingService;
 
     // Status booleans
     bool isKilled    = false;
@@ -882,8 +855,7 @@ int main(int argc, char* argv[]) {
   };
 
   // Initialize publisher for robot rotation
-  ros::Publisher cmdvelPub  = nh.advertise<geometry_msgs::Twist>("/cmd_vel_mux/input/navi", 10);
-  ros::Publisher parkingPub = nh.advertise<std_msgs::Bool>("/arm_control/scan", 10);
+  ros::Publisher cmdvelPub = nh.advertise<geometry_msgs::Twist>("/cmd_vel_mux/input/navi", 10);
 
   // Initialize services
   ros::ServiceClient posterExplorationService =
@@ -895,6 +867,7 @@ int main(int argc, char* argv[]) {
   ros::ServiceClient cylinderFaceService = nh.serviceClient<task3::CylinderFaceSrv>("/is_robber");
   ros::ServiceClient fineApproachService =
       nh.serviceClient<task3::FineApproachSrv>("/fine_approach");
+  ros::ServiceClient parkingService = nh.serviceClient<task3::ArmParkingSrv>("/fine_parking");
 
   // Initialize Navigator
   navigator = new Navigator(
@@ -903,8 +876,8 @@ int main(int argc, char* argv[]) {
       &faceDialogueService,
       &armExtendService,
       &cylinderFaceService,
-      &parkingPub,
-      &fineApproachService
+      &fineApproachService,
+      &parkingService
   );
 
   // Initialize subscribers
@@ -924,8 +897,6 @@ int main(int argc, char* argv[]) {
       &Navigator::posterDetectedCallback,
       navigator
   );
-  ros::Subscriber parkingSub =
-      nh.subscribe("/arm_control/parking_point", 1, &Navigator::parkingPointCallback, navigator);
 
   // Navigate through interest points
   navigator->navigateList(interestPoints);
