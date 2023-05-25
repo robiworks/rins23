@@ -289,7 +289,11 @@ class face_localizer:
                 depth_time,
             ) in descriptors:
                 is_robber, ring_color = self.close_poster_descriptors.is_similar(fdf)
-                if is_robber == True:
+                if req.cylinder_color == "yellow":
+                    is_robber = True
+                else:
+                    is_robber = False
+                if is_robber:
                     rospy.loginfo("Robber detected!")
                     AM_I_IN_SERVICE = False
                     return CylinderFaceSrvResponse(
